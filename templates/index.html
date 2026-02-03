@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reaction Manager</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #1877f2; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background: #1877f2; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 16px; }
+        button:hover { background: #166fe5; }
+        .stats { margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Reaction Manager 🚀</h1>
+        
+        <div class="form-group">
+            <label>URL del Post de Facebook:</label>
+            <input type="text" id="postUrl" placeholder="https://www.facebook.com/...">
+        </div>
+
+        <div class="form-group">
+            <label>Configuración de Reacciones (Total: <span id="totalCount">0</span>)</label>
+            <div style="display: flex; gap: 10px;">
+                <div>
+                    <label>❤️ Me encanta</label>
+                    <input type="number" id="loveCount" value="0" min="0" style="width: 60px;">
+                </div>
+                <div>
+                    <label>🤗 Me importa</label>
+                    <input type="number" id="careCount" value="0" min="0" style="width: 60px;">
+                </div>
+                <div>
+                    <label>😮 Me asombra</label>
+                    <input type="number" id="wowCount" value="0" min="0" style="width: 60px;">
+                </div>
+            </div>
+        </div>
+
+        <button onclick="startCampaign()">Iniciar Campaña</button>
+
+        <div class="stats">
+            <h3>Perfiles Disponibles: {{ profiles|length }}</h3>
+            <ul id="logList"></ul>
+        </div>
+    </div>
+
+    <script>
+        function startCampaign() {
+            const url = document.getElementById('postUrl').value;
+            const love = document.getElementById('loveCount').value;
+            // ... lógica de envío
+            fetch('/start_campaign', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ url: url })
+            })
+            .then(r => r.json())
+            .then(data => alert(data.message));
+        }
+    </script>
+</body>
+</html>
