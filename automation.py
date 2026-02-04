@@ -21,7 +21,6 @@ load_dotenv()
 ADSPOWER_API_URL = os.getenv("ADSPOWER_API_URL", "http://local.adspower.com:50325")
 API_KEY = os.getenv("API_KEY", "")
 
-POST_URL = "https://www.facebook.com/share/r/1XAkkQ5Kc9/"
 # =========================================
 
 
