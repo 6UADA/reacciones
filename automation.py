@@ -73,43 +73,45 @@ def get_driver(driver_path, debugger_address):
 
 def safe_reaction_click(driver, reaction_name):
     """
-    Busca todos los elementos que contengan el reaction_name en su aria-label,
-    y da clic al primero que sea VISIBLE.
+    Busca botones de reacción específicos para evitar clics en texto aleatorio.
     """
-    print(f"🔎 Buscando reacción visible: {reaction_name}...")
+    print(f"🔎 Buscando reacción: {reaction_name}...")
     try:
-        # Buscar TODOS los candidatos (aria-label O texto visible)
-        xpath = f"//*[contains(@aria-label, '{reaction_name}') or contains(text(), '{reaction_name}')]"
-        elements = driver.find_elements(By.XPATH, xpath)
+        # Intentamos selectores más precisos primero (aria-label exacto en botones)
+        # Facebook a veces usa "reaction_profile_..." o simplemente el nombre en aria-label
+        xpaths = [
+            f"//div[@aria-label='{reaction_name}' and @role='button']",
+            f"//div[@aria-label='{reaction_name}']",
+            f"//*[text()='{reaction_name}']" # Fallback ultimo recurso
+        ]
         
-        print(f"   -> Encontrados {len(elements)} candidatos.")
-
-        for i, el in enumerate(elements):
-            try:
-                if el.is_displayed():
-                    print(f"   ✅ Candidato {i+1} es VISIBLE. Intentando click...")
-                    
-                    # 1. Intentar Click directo con Acción (Mouse real)
-                    try:
-                        actions = ActionChains(driver)
-                        actions.move_to_element(el).click().perform()
-                    except:
-                        driver.execute_script("arguments[0].click();", el)
-
-                    human_sleep(0.5, 1)
-
-                    # 2. Intentar Click en el PADRE (por si el texto no es clickeable)
-                    try:
-                        parent = el.find_element(By.XPATH, "..")
-                        driver.execute_script("arguments[0].click();", parent)
-                    except:
-                        pass
-                    
-                    return True
-            except:
-                pass
+        for xpath in xpaths:
+            elements = driver.find_elements(By.XPATH, xpath)
+            for el in elements:
+                try:
+                    if el.is_displayed():
+                        # Verificar que no sea un texto gigante o comentario
+                        size = el.size
+                        if size['height'] > 100 or size['width'] > 200:
+                            continue # Probablemente no sea el icono de reacción
+                            
+                        print(f"   ✅ Elemento encontrado con {xpath}. Click...")
+                        
+                        # Scroll y Click
+                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
+                        human_sleep(0.5, 1)
+                        
+                        try:
+                            actions = ActionChains(driver)
+                            actions.move_to_element(el).click().perform()
+                        except:
+                            driver.execute_script("arguments[0].click();", el)
+                            
+                        return True
+                except:
+                    continue
         
-        print(f"❌ Ningún candidato visible encontrado para {reaction_name}")
+        print(f"❌ No se encontró botón visible para {reaction_name}")
         return False
 
     except Exception as e:
@@ -136,43 +138,83 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
         print(f"⚠️ Advertencia limpiando pestañas: {e}")
 
     human_sleep(4, 7)
+    
+    # Comportamiento humano antes de interactuar
+    random_scroll(driver)
 
     try:
-        # Botón principal de reacción
-        like_button = wait.until(
-            EC.presence_of_element_located(
-                (By.XPATH, "//div[@role='button' and contains(@aria-label,'Me gusta')]")
-            )
-        )
+        # 1. Buscar el botón "Me gusta" principal (sin reaccionar aun)
+        # Buscamos por aria-label "Me gusta" que sea un div role=button o similar
+        like_btn_selectors = [
+            "//div[@role='button' and @aria-label='Me gusta']",
+            "//div[@aria-label='Me gusta' and contains(@class, 'x1i10hfl')]", # Clases comunes de FB
+            "//span[text()='Me gusta']/ancestor::div[@role='button']"
+        ]
+        
+        like_button = None
+        for selector in like_btn_selectors:
+            try:
+                like_button = wait.until(EC.presence_of_element_located((By.XPATH, selector)))
+                if like_button: break
+            except:
+                continue
+                
+        if not like_button:
+            print("❌ No se encontró el botón principal de 'Me gusta'")
+            return False
+            
+        # --- CASO ESPECIAL: "Me gusta" ---
+        # Si la reacción es "Me gusta", no necesitamos el menú. Click directo.
+        if target_reaction.lower() == "me gusta":
+            print("👍 Reacción es 'Me gusta'. Click directo al botón principal.")
+            try:
+                actions.move_to_element(like_button).click().perform()
+            except:
+                driver.execute_script("arguments[0].click();", like_button)
+            
+            human_sleep(1, 2)
+            print("✅ Click enviado a botón principal (Me gusta)")
+            return True
 
-        # ¿Ya reaccionó?
-        # if like_button.get_attribute("aria-pressed") == "true":
-        #    print("⚠️ Ya tenía reacción, se omite")
-        #    return
-
-        # Hover para mostrar reacciones
+        # --- OTRAS REACCIONES (Requieren Hover) ---
+        # 2. Realizar Hover para que salgan las reacciones
+        print("👆 Realizando Hover Robusto...")
+        
+        # A) Moverse al centro
         actions.move_to_element(like_button).perform()
-        human_sleep(2, 4)
+        human_sleep(0.5, 1)
+        
+        # B) "Wiggle" (Pequeño movimiento dentro del elemento para despertar el JS)
+        actions.move_by_offset(3, 3).perform() 
+        human_sleep(0.5, 1)
+        actions.move_by_offset(-2, -2).perform()
+        human_sleep(1.5, 3)
 
-        # Diccionario solo para validar nombre vs texto, aunque safe_reaction_click usa el texto directo para buscar
-        # Entonces solo pasamos el target_reaction directo.
+        print(f"🎯 Buscando reacción: {target_reaction}")
         
-        print(f"🎯 Intentando aplicar reacción: {target_reaction}")
-        
-        # Intentar click seguro
+        # 3. Click en la reacción específica
         success = safe_reaction_click(driver, target_reaction)
 
         human_sleep(1, 2)
         
+        # Si falló, intentar un último recurso: Click largo (Long Press) si no apareció
+        if not success:
+            print("⚠️ Intento Fallback: Click largo sobre botón Me gusta...")
+            actions.click_and_hold(like_button).pause(1.5).release().perform()
+            human_sleep(2, 3)
+            success = safe_reaction_click(driver, target_reaction)
+        
         if success:
             print(f"✅ Reacción enviada: {target_reaction}")
+            return True
         else:
-            print(f"❌ No se pudo enviar reacción: {target_reaction}")
-        human_sleep(2, 4)
+            print(f"❌ Falló clic en: {target_reaction}")
+            return False
 
     except Exception as e:
-        print("❌ Error reaccionando:")
+        print("❌ Error general reaccionando:")
         traceback.print_exc()
+        return False
 
 
 

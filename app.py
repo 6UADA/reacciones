@@ -51,14 +51,21 @@ def start_campaign():
             })
             current_idx += 1
             
+            
+    # 2.5 Mezclar el orden de ejecución para mayor naturalidad
+    random.shuffle(assignments)
+
     # 3. Lanzar hilo en background
     thread = threading.Thread(target=run_batch, args=(assignments, url))
     thread.start()
     
-    return jsonify({"status": "started", "message": f"Campaña iniciada con {total_needed} perfiles."})
+    return jsonify({"status": "started", "message": f"Campaña iniciada con {total_needed} perfiles (orden aleatorio)."})
 
 def run_batch(assignments, url):
     print(f"🚀 Iniciando campaña batch para {url}")
+    
+    summary = {} # Contador de éxitos
+    
     for task in assignments:
         pid = task['profile_id']
         reaction = task['reaction']
@@ -71,8 +78,9 @@ def run_batch(assignments, url):
             continue
             
         # Reaccionar
+        is_success = False
         try:
-            automation.react_to_post(
+            is_success = automation.react_to_post(
                 data["webdriver"],
                 data["ws"]["selenium"],
                 url,
@@ -81,9 +89,26 @@ def run_batch(assignments, url):
         except Exception as e:
             print(f"Error in automation: {e}")
             
+        # Actualizar resumen si fue exitoso
+        if is_success:
+            summary[reaction] = summary.get(reaction, 0) + 1
+            
         # Cerrar
         automation.close_browser(pid)
-        time.sleep(random.uniform(2, 5)) # Pausa entre perfiles para no saturar
+        time.sleep(random.uniform(2, 5)) # Pausa entre perfiles
+        
+    # --- REPORTE FINAL ---
+    print("\n" + "="*30)
+    print("📢 REPORTE FINAL DE CAMPAÑA")
+    print(f"🔗 URL: {url}")
+    print("Resultados:")
+    if not summary:
+        print("❌ Ninguna reacción exitosa.")
+    else:
+        # Formato: "Me encanta: 5, Me asombra: 2"
+        parts = [f"{k}: {v}" for k, v in summary.items()]
+        print(", ".join(parts))
+    print("="*30 + "\n")
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
