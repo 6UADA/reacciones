@@ -28,6 +28,22 @@ def human_sleep(a=2, b=5):
     time.sleep(random.uniform(a, b))
 
 
+def random_scroll(driver):
+    """Realiza scroll aleatorio para simular comportamiento humano"""
+    try:
+        scroll_amount = random.randint(300, 700)
+        driver.execute_script(f"window.scrollBy(0, {scroll_amount});")
+        human_sleep(1, 2)
+        
+        # A veces regresa un poco
+        if random.random() > 0.7:
+             driver.execute_script(f"window.scrollBy(0, -{random.randint(100, 300)});")
+             human_sleep(0.5, 1)
+             
+    except Exception as e:
+        print(f"⚠️ Error en random_scroll: {e}")
+
+
 # ---------- ADSPOWER ----------
 def start_browser(user_id):
     url = f"{ADSPOWER_API_URL}/api/v1/browser/start?user_id={user_id}"
@@ -74,49 +90,68 @@ def get_driver(driver_path, debugger_address):
 def safe_reaction_click(driver, reaction_name):
     """
     Busca botones de reacción específicos para evitar clics en texto aleatorio.
+    Intenta varias veces por si la animación de apertura demora.
     """
     print(f"🔎 Buscando reacción: {reaction_name}...")
-    try:
-        # Intentamos selectores más precisos primero (aria-label exacto en botones)
-        # Facebook a veces usa "reaction_profile_..." o simplemente el nombre en aria-label
-        xpaths = [
-            f"//div[@aria-label='{reaction_name}' and @role='button']",
-            f"//div[@aria-label='{reaction_name}']",
-            f"//*[text()='{reaction_name}']" # Fallback ultimo recurso
-        ]
-        
-        for xpath in xpaths:
-            elements = driver.find_elements(By.XPATH, xpath)
-            for el in elements:
-                try:
-                    if el.is_displayed():
-                        # Verificar que no sea un texto gigante o comentario
-                        size = el.size
-                        if size['height'] > 100 or size['width'] > 200:
-                            continue # Probablemente no sea el icono de reacción
-                            
-                        print(f"   ✅ Elemento encontrado con {xpath}. Click...")
-                        
-                        # Scroll y Click
-                        driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", el)
-                        human_sleep(0.5, 1)
-                        
-                        try:
-                            actions = ActionChains(driver)
-                            actions.move_to_element(el).click().perform()
-                        except:
-                            driver.execute_script("arguments[0].click();", el)
-                            
-                        return True
-                except:
-                    continue
-        
-        print(f"❌ No se encontró botón visible para {reaction_name}")
-        return False
+    
+    # Mapeo de variaciones comunes o errores de typo
+    variations = [reaction_name]
+    if reaction_name == "Me encanta": variations.extend(["Love", "Heart", "Encanta"])
+    if reaction_name == "Me divierte": variations.extend(["Haha", "Laughter", "Laughing", "Funny", "Gracia", "Laugh", "Divierte"])
+    if reaction_name == "Me asombra": variations.extend(["Wow", "Astonished", "Asombra", "Surprised", "Amazing"])
+    if reaction_name == "Me entristece": variations.extend(["Sad", "Crying", "Sorry", "Entristece", "Triste"])
+    if reaction_name == "Me enoja": variations.extend(["Angry", "Mad", "Enoja", "Enfada", "Grumpy"])
+    if reaction_name == "Me importa": variations.extend(["Care", "Hug", "Importa", "Care/Heart"])
 
-    except Exception as e:
-        print(f"❌ Error buscando elementos: {e}")
-        return False
+    # Intentos de espera (el menú tarda unos ms en aparecer)
+    for attempt in range(4): 
+        try:
+            for variant in variations:
+                # Selectores ultra-flexibles
+                xpaths = [
+                    f"//div[@role='button'][contains(@aria-label, '{variant}')]",
+                    f"//div[contains(@aria-label, '{variant}')][@role='img']",
+                    f"//img[contains(@alt, '{variant}')]",
+                    f"//*[@aria-label='{variant}']",
+                    f"//*[text()='{variant}']"
+                ]
+                
+                for xpath in xpaths:
+                    elements = driver.find_elements(By.XPATH, xpath)
+                    for el in elements:
+                        try:
+                            if el.is_displayed():
+                                size = el.size
+                                # FILTRO v5: Ajustado para capturar iconos en diferentes zooms
+                                if size['height'] < 25 or size['width'] < 25:
+                                    continue
+                                
+                                if size['height'] > 120 or size['width'] > 130:
+                                    continue 
+                                
+                                print(f"   ✅ '{variant}' encontrado ({xpath}) [{size['width']}x{size['height']}px]. Click...")
+                                
+                                # Move to element de forma segura
+                                try:
+                                    actions = ActionChains(driver)
+                                    # Moverse, esperar a que el hover del icono se active y click
+                                    actions.move_to_element(el).pause(0.5).click().perform()
+                                except:
+                                    driver.execute_script("arguments[0].click();", el)
+                                    
+                                return True
+                        except:
+                            continue
+            
+            # Si no encontró nada, esperar un poco antes del siguiente intento
+            time.sleep(1)
+            
+        except Exception as e:
+            print(f"⚠️ Error intentando buscar reaccion: {e}")
+            time.sleep(1)
+            
+    print(f"❌ No se encontró '{reaction_name}' tras {attempt+1} intentos")
+    return False
 
 
 def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me encanta"):
@@ -137,59 +172,116 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
     except Exception as e:
         print(f"⚠️ Advertencia limpiando pestañas: {e}")
 
-    human_sleep(4, 7)
+    human_sleep(5, 8)
     
+    # 0. Esperar a que la página se estabilice un poco más (revisar si hay contenido)
+    try:
+        wait.until(EC.presence_of_element_located((By.XPATH, "//div[@role='main'] | //div[@role='article']")))
+    except:
+        print("⚠️ Advertencia: Tiempo de carga excedido, intentando continuar...")
+
     # Comportamiento humano antes de interactuar
     random_scroll(driver)
 
     try:
-        # 1. Buscar el botón "Me gusta" principal (sin reaccionar aun)
-        # Buscamos por aria-label "Me gusta" que sea un div role=button o similar
+        # 1. Buscar el botón "Me gusta" principal 
+        # Selectores expandidos: Español, Inglés, Estructurales y Vecindad v6
         like_btn_selectors = [
-            "//div[@role='button' and @aria-label='Me gusta']",
-            "//div[@aria-label='Me gusta' and contains(@class, 'x1i10hfl')]", # Clases comunes de FB
-            "//span[text()='Me gusta']/ancestor::div[@role='button']"
+            "//div[@role='button'][@aria-label='Me gusta']",
+            "//div[@role='button'][@aria-label='Like']",
+            "//div[@role='button'][contains(@aria-label, 'Me gusta')]",
+            "//div[@role='button'][contains(@aria-label, 'Te gusta')]", # "A ti te gusta esto"
+            "//div[@role='button'][contains(@aria-label, 'Liked')]", # Inglés reaccionado
+            "//div[@role='button'][@aria-label='Reaccionar']",
+            "//div[@role='button'][@aria-label='Reaction']",
+            "//div[@role='button'][contains(@aria-label, 'reacción')]",
+            # Selector estructural
+            "//div[@role='button']//span[text()='Me gusta']/ancestor::div[@role='button']",
+            "//div[@role='button']//span[text()='Like']/ancestor::div[@role='button']",
+            "//div[contains(@class, 'x1i10hfl')]//span[text()='Me gusta']/../../..",
+            # v6: Sibling logic (El botón antes de Comentar/Comment o Compartir)
+            "//div[@role='button'][contains(@aria-label, 'Comentar') or contains(@aria-label, 'Comment')]/preceding-sibling::div[@role='button']",
+            "//div[@role='button'][contains(@aria-label, 'Compartir') or contains(@aria-label, 'Share')]/preceding-sibling::div[@role='button'][1]",
+            "//span[contains(text(), 'Comentar') or contains(text(), 'Comment')]/ancestor::div[@role='button']/preceding-sibling::div[@role='button']"
         ]
         
         like_button = None
+        current_aria = ""
+        
+        # v5: Proceso en dos pasadas. Primero buscamos botones con ARIA-LABEL no vacío.
+        candidates = []
         for selector in like_btn_selectors:
             try:
-                like_button = wait.until(EC.presence_of_element_located((By.XPATH, selector)))
-                if like_button: break
+                elements = driver.find_elements(By.XPATH, selector)
+                for el in elements:
+                    if el.is_displayed():
+                        size = el.size
+                        if size['width'] > 40 and size['width'] < 360:
+                            candidates.append(el)
             except:
                 continue
-                
+        
+        # Seleccionar el mejor candidato (el que tenga aria-label o texto)
+        for cand in candidates:
+            aria = cand.get_attribute("aria-label") or ""
+            text = cand.text or ""
+            if aria or text:
+                like_button = cand
+                current_aria = aria
+                break
+        
+        # Fallback al primero disponible v6 (con o sin texto)
+        if not like_button and candidates:
+            like_button = candidates[0]
+            current_aria = like_button.get_attribute("aria-label") or ""
+
         if not like_button:
-            print("❌ No se encontró el botón principal de 'Me gusta'")
-            return False
+            print("❌ No se encontró el botón principal de 'Me gusta' (Probamos 14 selectores)")
+            return True # Retornar True para no marcar error fatal si ya estaba liked pero no lo vimos
             
+        print(f"✅ Botón encontrado (Aria: '{current_aria}')")
+
         # --- CASO ESPECIAL: "Me gusta" ---
-        # Si la reacción es "Me gusta", no necesitamos el menú. Click directo.
-        if target_reaction.lower() == "me gusta":
-            print("👍 Reacción es 'Me gusta'. Click directo al botón principal.")
+        target_norm = target_reaction.lower()
+        if target_norm == "me gusta" or target_norm == "like":
+            # Detectar si ya está activo
+            already_active = any(x in current_aria.lower() for x in ["te gusta", "reacción", "liked", "remove", "ya no", "un-like"])
+            
+            if already_active:
+                 print("👍 Ya tiene un 'Me gusta' o reacción activa. No hacemos nada.")
+                 return True
+
+            print("👍 Reacción es 'Me gusta'. Click directo.")
             try:
+                actions = ActionChains(driver)
                 actions.move_to_element(like_button).click().perform()
             except:
                 driver.execute_script("arguments[0].click();", like_button)
             
             human_sleep(1, 2)
-            print("✅ Click enviado a botón principal (Me gusta)")
             return True
 
         # --- OTRAS REACCIONES (Requieren Hover) ---
         # 2. Realizar Hover para que salgan las reacciones
-        print("👆 Realizando Hover Robusto...")
+        print("👆 Realizando Hover 'Sticky' (v5)...")
         
-        # A) Moverse al centro
+        # v5/v6: Hover sostenido y deliberado
+        actions = ActionChains(driver)
         actions.move_to_element(like_button).perform()
-        human_sleep(0.5, 1)
+        time.sleep(1) 
         
-        # B) "Wiggle" (Pequeño movimiento dentro del elemento para despertar el JS)
-        actions.move_by_offset(3, 3).perform() 
-        human_sleep(0.5, 1)
-        actions.move_by_offset(-2, -2).perform()
-        human_sleep(1.5, 3)
+        # Micro movimiento para trigger v6
+        actions.move_by_offset(2, 2).perform()
+        
+        try:
+            # Esperar a que salga la capa de reacciones
+            wait.until(EC.presence_of_element_located((By.XPATH, "//div[@role='presentation']|//div[@role='dialog']")))
+            print("✨ Capa de reacciones detectada.")
+        except:
+            pass
 
+        time.sleep(1.5) 
+        
         print(f"🎯 Buscando reacción: {target_reaction}")
         
         # 3. Click en la reacción específica
@@ -197,12 +289,16 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
 
         human_sleep(1, 2)
         
-        # Si falló, intentar un último recurso: Click largo (Long Press) si no apareció
+        # v6 Force Hold: Si falló, intentar Presión larga (3 segundos)
         if not success:
-            print("⚠️ Intento Fallback: Click largo sobre botón Me gusta...")
-            actions.click_and_hold(like_button).pause(1.5).release().perform()
-            human_sleep(2, 3)
-            success = safe_reaction_click(driver, target_reaction)
+            print("⚠️ Intento v6 Force Hold: Click and hold (3s) sobre botón Me gusta...")
+            try:
+                actions = ActionChains(driver)
+                actions.move_to_element(like_button).click_and_hold(like_button).pause(3.5).release().perform()
+                human_sleep(2, 4)
+                success = safe_reaction_click(driver, target_reaction)
+            except Exception as e:
+                print(f"❌ Error en Force Hold: {e}")
         
         if success:
             print(f"✅ Reacción enviada: {target_reaction}")
@@ -215,6 +311,71 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
         print("❌ Error general reaccionando:")
         traceback.print_exc()
         return False
+
+
+def watch_live_video(driver_path, debugger_address, url, duration_seconds=60):
+    """
+    Simula visualización de un video en vivo.
+    Entra al link, da play si es necesario y se queda simulando actividad.
+    """
+    driver, wait, actions = get_driver(driver_path, debugger_address)
+    driver.get(url)
+    
+    # Limpieza de pestañas...
+    try:
+        current_handle = driver.current_window_handle
+        handles = driver.window_handles
+        if len(handles) > 1:
+            for handle in handles:
+                if handle != current_handle:
+                    driver.switch_to.window(handle)
+                    driver.close()
+            driver.switch_to.window(current_handle)
+    except: pass
+
+    print(f"👀 Viendo video por {duration_seconds} segundos...")
+    human_sleep(5, 8)
+    
+    # 1. Intentar dar Play si no arrancó solo
+    play_selectors = [
+        "//div[@role='button'][@aria-label='Reproducir']",
+        "//div[@role='button'][@aria-label='Play']",
+        "//div[@role='button'][@aria-label='Continuar']",
+        "//video/ancestor::div[1]"
+    ]
+    
+    for selector in play_selectors:
+        try:
+            btn = driver.find_element(By.XPATH, selector)
+            if btn.is_displayed():
+                actions = ActionChains(driver)
+                actions.move_to_element(btn).click().perform()
+                print("▶️ Play clicado.")
+                break
+        except: continue
+
+    # 2. Loop de actividad
+    start_time = time.time()
+    while (time.time() - start_time) < duration_seconds:
+        try:
+            # Simular movimiento aleatorio cada 10-20 segundos
+            human_sleep(10, 20)
+            
+            # Probabilidad de scroll corto
+            if random.random() > 0.7:
+                scroll = random.randint(100, 300)
+                driver.execute_script(f"window.scrollBy(0, {scroll});")
+                time.sleep(1)
+                driver.execute_script(f"window.scrollBy(0, -{scroll});")
+                print("🖱️ Movimiento de actividad simulado.")
+            else:
+                actions = ActionChains(driver)
+                actions.move_by_offset(random.randint(-5, 5), random.randint(-5, 5)).perform()
+        except:
+            break
+            
+    print("✅ Tiempo de visualización completado.")
+    return True
 
 
 

@@ -56,59 +56,80 @@ def start_campaign():
     random.shuffle(assignments)
 
     # 3. Lanzar hilo en background
-    thread = threading.Thread(target=run_batch, args=(assignments, url))
+    duration_mins = float(data.get('duration_mins', 1))
+    thread = threading.Thread(target=run_batch, args=(assignments, url, duration_mins))
     thread.start()
     
-    return jsonify({"status": "started", "message": f"Campaña iniciada con {total_needed} perfiles (orden aleatorio)."})
+    return jsonify({"status": "started", "message": f"Campaña iniciada con {total_needed} perfiles."})
 
-def run_batch(assignments, url):
-    print(f"🚀 Iniciando campaña batch para {url}")
+from concurrent.futures import ThreadPoolExecutor
+
+def run_batch(assignments, url, duration_mins=1):
+    print(f"🚀 Iniciando campaña simultánea para {url} (Vistas: {duration_mins} min)")
     
-    summary = {} # Contador de éxitos
+    summary = {} # Contador compartido
+    summary_lock = threading.Lock() # Bloqueo para hilos
     
-    for task in assignments:
+    def process_profile(task, index):
         pid = task['profile_id']
         reaction = task['reaction']
-        print(f"Processing Profile {pid} -> {reaction}")
+        
+        # v6: Arranque escalonado (cada perfil espera un poco más que el anterior)
+        # Esto evita abrir 20 Chromes al mismo segundo
+        wait_time = index * 4 # 4 segundos entre arranques
+        print(f"⏳ Perfil {pid} esperando {wait_time}s para arrancar...")
+        time.sleep(wait_time)
+        
+        print(f"🟢 Perfil {pid} iniciando...")
         
         # Iniciar navegador
         data = automation.start_browser(pid)
         if not data:
-            print(f"Failed to start {pid}")
-            continue
+            print(f"❌ Error iniciando {pid}")
+            return
             
-        # Reaccionar
         is_success = False
         try:
-            is_success = automation.react_to_post(
-                data["webdriver"],
-                data["ws"]["selenium"],
-                url,
-                target_reaction=reaction
-            )
+            if reaction == "Solo Views":
+                is_success = automation.watch_live_video(
+                    data["webdriver"],
+                    data["ws"]["selenium"],
+                    url,
+                    duration_seconds=int(duration_mins * 60)
+                )
+            else:
+                is_success = automation.react_to_post(
+                    data["webdriver"],
+                    data["ws"]["selenium"],
+                    url,
+                    target_reaction=reaction
+                )
         except Exception as e:
-            print(f"Error in automation: {e}")
+            print(f"❌ Error en automatización ({pid}): {e}")
             
-        # Actualizar resumen si fue exitoso
         if is_success:
-            summary[reaction] = summary.get(reaction, 0) + 1
+            with summary_lock:
+                summary[reaction] = summary.get(reaction, 0) + 1
             
-        # Cerrar
         automation.close_browser(pid)
-        time.sleep(random.uniform(2, 5)) # Pausa entre perfiles
-        
+
+    # Lanzar hilos (máximo 10 perfiles a la vez por seguridad)
+    max_workers = 10
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        for i, task in enumerate(assignments):
+            executor.submit(process_profile, task, i)
+            
     # --- REPORTE FINAL ---
     print("\n" + "="*30)
-    print("📢 REPORTE FINAL DE CAMPAÑA")
+    print("📢 REPORTE FINAL DE CAMPAÑA SIMULTÁNEA")
     print(f"🔗 URL: {url}")
     print("Resultados:")
     if not summary:
-        print("❌ Ninguna reacción exitosa.")
+        print("❌ Ninguna acción exitosa.")
     else:
-        # Formato: "Me encanta: 5, Me asombra: 2"
         parts = [f"{k}: {v}" for k, v in summary.items()]
         print(", ".join(parts))
     print("="*30 + "\n")
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
