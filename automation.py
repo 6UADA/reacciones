@@ -75,13 +75,126 @@ def close_browser(user_id):
     requests.get(url, headers=headers)
 
 
+# ---------- API HELPERS ----------
+def get_ads_groups():
+    """Obtiene la lista de todos los grupos de AdsPower y los ordena con manejo de rate limit"""
+    groups = []
+    page = 1
+    while True:
+        url = f"{ADSPOWER_API_URL}/api/v1/group/list?page={page}&page_size=100"
+        headers = {"Authorization": f"Bearer {API_KEY}"}
+        try:
+            resp = requests.get(url, headers=headers)
+            data = resp.json()
+            if data.get("code") == 0:
+                batch = data["data"]["list"]
+                if not batch: 
+                    break
+                groups.extend(batch)
+                page += 1
+                # Pequeña pausa para no saturar la API en paginación
+                time.sleep(0.5)
+            elif "Too many request" in data.get("msg", ""):
+                print(f"⏳ Rate limit en grupos (página {page}). Esperando 2s antes de reintentar...")
+                time.sleep(2)
+                continue
+            else:
+                print(f"⚠️ Error API AdsPower (Groups): {data.get('msg')}")
+                break
+        except Exception as e:
+            print(f"⚠️ Excepción obteniendo grupos: {e}")
+            break
+    
+    print(f"📊 Total grupos cargados de AdsPower: {len(groups)}")
+    
+    # Ordenar por nombre (Natural order: Grupo 1, Grupo 2... Grupo 10)
+    try:
+        import re
+        def natural_sort_key(s):
+            name = s.get('group_name', '')
+            return [int(text) if text.isdigit() else text.lower()
+                    for text in re.split('([0-9]+)', name)]
+        groups.sort(key=natural_sort_key)
+    except:
+        groups.sort(key=lambda x: x.get('group_name', '').lower())
+        
+    return groups
+
+
+def get_ads_profiles(group_id):
+    """Obtiene todos los perfiles de un grupo específico con manejo de rate limit"""
+    ids = []
+    page = 1
+    while True:
+        url = f"{ADSPOWER_API_URL}/api/v1/user/list?group_id={group_id}&page={page}&page_size=100"
+        headers = {"Authorization": f"Bearer {API_KEY}"}
+        
+        try:
+            resp = requests.get(url, headers=headers)
+            data = resp.json()
+            if data.get("code") == 0:
+                user_list = data["data"]["list"]
+                if not user_list:
+                    break
+                for profile in user_list:
+                    ids.append(profile["user_id"])
+                
+                # Continuar solo si recibimos una lista llena, 
+                # pero mejor basarse en si hay más páginas o si recibimos algo
+                page += 1
+                time.sleep(0.5)
+                # Si recibimos menos de 100, es muy probable que sea la última página
+                # pero para ser ultra-seguros en APIs inconsistentes, solo paramos si not batch
+                if len(user_list) < 10: # Si tiene 10 perfiles por grupo, esto frenará bien
+                     break
+                if len(user_list) == 0:
+                     break
+            elif "Too many request" in data.get("msg", ""):
+                print(f"⏳ Rate limit en perfiles (grupo {group_id}). Esperando 2s...")
+                time.sleep(2)
+                continue
+            else:
+                print(f"❌ Error obteniendo perfiles del grupo {group_id}: {data.get('msg')}")
+                break
+        except Exception as e:
+            print(f"⚠️ Excepción obteniendo perfiles del grupo {group_id}: {e}")
+            break
+            
+    return ids
+
+
 # ---------- FACEBOOK ----------
 def get_driver(driver_path, debugger_address):
     chrome_options = Options()
     chrome_options.add_experimental_option("debuggerAddress", debugger_address)
 
-    service = Service(driver_path)
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    # Extract port from debugger_address (e.g., "127.0.0.1:50000")
+    webdriver_port = debugger_address.split(':')[-1]
+
+    # Intentar conexión con reintentos para evitar Read Timeout durante el arranque
+    max_retries = 3
+    driver = None
+    for attempt in range(max_retries):
+        try:
+            print(f"   🔧 Conectando Selenium a puerto {webdriver_port} (Intento {attempt+1})...")
+            # Aumentar tiempo de espera de conexión
+            driver = webdriver.Remote(
+                command_executor=f"http://127.0.0.1:{webdriver_port}",
+                options=chrome_options
+            )
+            driver.set_page_load_timeout(120)
+            driver.set_script_timeout(120)
+            break # Connection successful, exit loop
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"   ⚠️ Error de conexión, reintentando en 3s...")
+                time.sleep(3)
+            else:
+                print(f"   ❌ Error fatal conectando a AdsPower local: {e}")
+                return None, None, None # Return Nones if connection fails after retries
+    
+    if driver is None:
+        return None, None, None # Should not happen if loop exits correctly, but for safety
 
     wait = WebDriverWait(driver, 25)
     return driver, wait, ActionChains(driver)
