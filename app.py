@@ -82,8 +82,11 @@ def run_batch(assignments, url, duration_mins=1, counts=None, group_id=None, end
         current_idx = 0
         total_needed = sum(int(c) for c in counts.values())
 
-        # Limitamos a los perfiles que encontramos
+        # Perfiles usados para la campaña inicial
         selected_ids = range_profiles[:total_needed]
+        # Perfiles de reserva para sustitución
+        reserve_pool = range_profiles[total_needed:]
+        reserve_lock = threading.Lock()
 
         for reaction, count in counts.items():
             count = int(count)
@@ -109,46 +112,70 @@ def run_batch(assignments, url, duration_mins=1, counts=None, group_id=None, end
         pid = task['profile_id']
         reaction = task['reaction']
         
-        # v6: Arranque escalonado (cada perfil espera un poco más que el anterior)
-        # Ejecución escalonada para no saturar el PC
-        delay = index * 8 # 8 segundos entre cada arranque
+        # v6: Arranque escalonado
+        delay = index * 8 
         print(f"⏳ Perfil {pid} esperando {delay}s para arrancar...")
         time.sleep(delay)
         
-        print(f"🟢 Perfil {pid} iniciando...")
-        
-        # Iniciar navegador
-        data = automation.start_browser(pid)
-        if not data:
-            print(f"❌ Error iniciando {pid}")
-            return
+        while pid: # Loop para permitir sustitución
+            print(f"🟢 Perfil {pid} iniciando...")
             
-        is_success = False
-        try:
-            if reaction == "Solo Views":
-                is_success = automation.watch_live_video(
-                    data["webdriver"],
-                    data["ws"]["selenium"],
-                    url,
-                    duration_seconds=int(duration_mins * 60)
-                )
-            else:
-                is_success = automation.react_to_post(
-                    data["webdriver"],
-                    data["ws"]["selenium"],
-                    url,
-                    target_reaction=reaction
-                )
-        except Exception as e:
-            print(f"❌ Error en automatización ({pid}): {e}")
-            
-        if is_success:
-            with summary_lock:
-                summary[reaction] = summary.get(reaction, 0) + 1
-            
-        automation.close_browser(pid)
+            # Iniciar navegador
+            data = automation.start_browser(pid)
+            if not data:
+                print(f"❌ Error iniciando {pid}")
+                # Intentar sustituir si el inicio falla por AdsPower
+                pid = None
+                with reserve_lock:
+                    if reserve_pool:
+                        pid = reserve_pool.pop(0)
+                        print(f"♻️ Sustituyendo por error de inicio. Nuevo perfil: {pid}")
+                        continue
+                return
+                
+            status = "error"
+            try:
+                if reaction == "Solo Views":
+                    status = automation.watch_live_video(
+                        data["webdriver"],
+                        data["ws"]["selenium"],
+                        url,
+                        duration_seconds=int(duration_mins * 60)
+                    )
+                else:
+                    status = automation.react_to_post(
+                        data["webdriver"],
+                        data["ws"]["selenium"],
+                        url,
+                        target_reaction=reaction
+                    )
+            except Exception as e:
+                print(f"❌ Error en automatización ({pid}): {e}")
+                status = "error"
+                
+            automation.close_browser(pid)
 
-    # Lanzar hilos (Aumentado a 90 por solicitud del usuario)
+            if status == "success":
+                with summary_lock:
+                    summary[reaction] = summary.get(reaction, 0) + 1
+                break # Éxito, salir del loop de sustitución
+            
+            elif status == "account_error":
+                print(f"🔴 Perfil {pid} inhabilitado o deslogueado.")
+                pid = None
+                with reserve_lock:
+                    if reserve_pool:
+                        pid = reserve_pool.pop(0)
+                        print(f"♻️ Sustituyendo perfil... Nuevo perfil: {pid}")
+                        # No hay delay extra aquí para no retrasar la campaña, 
+                        # pero ya pasó el delay inicial del hilo
+                        continue
+                break # Si no hay más reserva, terminar
+            else:
+                # Error general (no de cuenta), mejor no reintentar para no gastar reserva en errores de red/selectores
+                break
+
+    # Lanzar hilos
     max_workers = 90
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         for i, task in enumerate(assignments):
@@ -167,4 +194,5 @@ def run_batch(assignments, url, duration_mins=1, counts=None, group_id=None, end
     print("="*30 + "\n")
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # v7: Desactivamos debug y reloader para evitar WinError 10038 al manejar muchos hilos y procesos
+    app.run(debug=False, use_reloader=False, host='0.0.0.0', port=5000)
