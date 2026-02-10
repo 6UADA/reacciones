@@ -71,6 +71,7 @@
 
         input[type="number"] {
             -moz-appearance: textfield;
+            appearance: textfield;
         }
 
         @keyframes fadeInUp {
@@ -258,7 +259,7 @@
                                 </svg>
                             </div>
                             <div>
-                                <h2 class="text-base font-semibold text-txt-primary">Rango de Grupos</h2>
+                                <h2 class="text-base font-semibold text-txt-primary">Rango de Grupos</h2> 
                                 <p class="text-xs text-txt-muted">Selecciona el rango de grupos para la campaña</p>
                             </div>
                         </div>
@@ -299,17 +300,36 @@
                                 </svg>
                             </div>
                             <div>
-                                <h2 class="text-base font-semibold text-txt-primary">Configuracion de Reacciones</h2>
-                                <p class="text-xs text-txt-muted">Define la cantidad de cada tipo de reaccion</p>
+                                <h2 class="text-base font-semibold text-txt-primary">Configuracion de Campaña</h2>
+                                <p class="text-xs text-txt-muted" id="configDesc">Define los parametros de tu
+                                    interaccion</p>
                             </div>
                         </div>
-                        <div id="totalBadge"
-                            class="total-badge px-4 py-2 rounded-xl text-sm font-semibold text-brand-light">
-                            Total: <span id="totalCount">0</span>
+                        <div class="flex flex-col items-end gap-1">
+                            <div id="totalBadge"
+                                class="total-badge px-4 py-2 rounded-xl text-sm font-semibold text-brand-light">
+                                Total: <span id="totalCount">0</span>
+                            </div>
+                            <div id="capacityAlert" class="text-[10px] font-medium text-amber-400 hidden">
+                                Necesitas 2 grupos para las 16 reacciones
+                            </div>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                    <!-- Mode Selector v24 -->
+                    <div class="flex p-1 bg-surface-input rounded-xl border border-edge mb-6 max-w-sm mx-auto">
+                        <button id="modeReactions" onclick="setCampaignMode('reactions')"
+                            class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all bg-brand text-white shadow-glow">
+                            Reacciones
+                        </button>
+                        <button id="modeViews" onclick="setCampaignMode('views')"
+                            class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all text-txt-secondary hover:text-txt-primary">
+                            Visualizaciones
+                        </button>
+                    </div>
+
+                    <!-- Grid de Reacciones -->
+                    <div id="reactionsGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                         <!-- Like -->
                         <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
                             data-reaction="like">
@@ -366,11 +386,15 @@
                             <input type="number" min="0" value="0"
                                 class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
                         </div>
+                    </div>
+
+                    <!-- Grid de Visualizaciones -->
+                    <div id="viewsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
                         <!-- Views -->
                         <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
                             data-reaction="views">
                             <div class="text-3xl" role="img" aria-label="Solo Views">&#128064;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Solo Views</span>
+                            <span class="text-xs font-medium text-txt-secondary">Solo Visualizaciones</span>
                             <input type="number" min="0" value="0"
                                 class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
                         </div>
@@ -378,7 +402,7 @@
                         <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
                             data-reaction="timer">
                             <div class="text-3xl" role="img" aria-label="Minutos">&#9201;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Minutos</span>
+                            <span class="text-xs font-medium text-txt-secondary">Duracion (Minutos)</span>
                             <input type="number" min="1" value="1" id="minutesInput"
                                 class="w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
                         </div>
@@ -446,6 +470,7 @@
 
         // Global group storage for filtering
         let allGroupsData = [];
+        let campaignMode = 'reactions'; // v24: Default mode
 
         // Load groups on start
         document.addEventListener('DOMContentLoaded', () => {
@@ -494,14 +519,62 @@
             });
         }
 
-        // Calculate total reactions
         function updateTotal() {
             const inputs = document.querySelectorAll('.reaction-input');
             let total = 0;
             inputs.forEach(function (input) {
-                total += parseInt(input.value) || 0;
+                // Solo sumamos si el contenedor no está oculto
+                if (!input.closest('.hidden')) {
+                    total += parseInt(input.value) || 0;
+                }
             });
             document.getElementById('totalCount').textContent = total;
+            checkCapacity(total);
+        }
+
+        // v25: Verificación de capacidad (Sugerido por el usuario)
+        function checkCapacity(needed) {
+            const alertEl = document.getElementById('capacityAlert');
+            if (needed <= 0) {
+                alertEl.classList.add('hidden');
+                return;
+            }
+
+            // Suponemos un promedio de 10 cuentas por grupo
+            const groupsNeeded = Math.ceil(needed / 10);
+
+            if (groupsNeeded > 1) {
+                alertEl.textContent = `Necesitas ${groupsNeeded} grupos para las ${needed} reacciones`;
+                alertEl.classList.remove('hidden');
+            } else {
+                alertEl.classList.add('hidden');
+            }
+        }
+
+        function setCampaignMode(mode) {
+            campaignMode = mode;
+            const rGrid = document.getElementById('reactionsGrid');
+            const vGrid = document.getElementById('viewsGrid');
+            const btnR = document.getElementById('modeReactions');
+            const btnV = document.getElementById('modeViews');
+            const desc = document.getElementById('configDesc');
+
+            if (mode === 'reactions') {
+                rGrid.classList.remove('hidden');
+                vGrid.classList.add('hidden');
+                btnR.className = "flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all bg-brand text-white shadow-glow";
+                btnV.className = "flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all text-txt-secondary hover:text-txt-primary";
+                desc.textContent = "Define la cantidad de cada tipo de reaccion";
+                vGrid.querySelector('input').value = 0;
+            } else {
+                vGrid.classList.remove('hidden');
+                rGrid.classList.add('hidden');
+                btnV.className = "flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all bg-brand text-white shadow-glow";
+                btnR.className = "flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all text-txt-secondary hover:text-txt-primary";
+                desc.textContent = "Configura el tiempo de visualizacion";
+                rGrid.querySelectorAll('input').forEach(i => i.value = 0);
+            }
+            updateTotal();
         }
 
         // Attach event listeners
@@ -629,6 +702,7 @@
                 el.style.animation = '';
             }, 600);
         }
+
 
         // Add shake keyframes
         var style = document.createElement('style');

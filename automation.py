@@ -45,8 +45,46 @@ def random_scroll(driver):
 
 
 # ---------- ADSPOWER ----------
-def start_browser(user_id):
-    url = f"{ADSPOWER_API_URL}/api/v1/browser/start?user_id={user_id}"
+def start_browser(user_id, headless=True):
+    #Modo sin cabeza y banderas de optimización de alto rendimiento
+    headless_flag = "1" if headless else "0"
+    
+    # v16: Banderas optimizadas para Modo Híbrido
+    opt_flags = [
+        "--disable-background-networking",
+        "--disable-background-timer-throttling",
+        "--disable-breakpad",
+        "--disable-client-side-phishing-detection",
+        "--disable-component-update",
+        "--disable-default-apps",
+        "--disable-dev-shm-usage",
+        "--disable-domain-reliability",
+        "--disable-extensions",
+        "--disable-features=InterestFeedContentSuggestions",
+        "--mute-audio",
+        "--no-sandbox",
+        "--disable-ipc-flooding-protection",
+        "--disable-hang-monitor",
+        "--js-flags=--optimize_for_size --max-old-space-size=500",
+        "--disable-session-crashed-bubble",
+        "--no-session-restore",
+        "--no-first-run",
+        "--disable-infobars"
+    ]
+    
+    # Si es Headless, desactivamos GPU para ahorrar. 
+    # Si es visible (v16), permitimos GPU para que FB valide la vista del video.
+    if headless:
+        opt_flags.append("--disable-gpu")
+    else:
+        # Modo Visible: Aseguramos que el video renderice correctamente
+        opt_flags.extend(["--enable-gpu-rasterization", "--ignore-certificate-errors"])
+    
+    # AdsPower requiere launch_args como una cadena JSON de lista
+    import json
+    launch_args = json.dumps(opt_flags)
+    
+    url = f"{ADSPOWER_API_URL}/api/v1/browser/start?user_id={user_id}&headless={headless_flag}&launch_args={launch_args}"
     headers = {
         "Authorization": f"Bearer {API_KEY}"
     }
@@ -87,10 +125,12 @@ def get_ads_groups():
             resp = requests.get(url, headers=headers)
             data = resp.json()
             if data.get("code") == 0:
-                batch = data["data"]["list"]
-                if not batch: 
-                    break
-                groups.extend(batch)
+                for g in batch:
+                    groups.append({
+                        "group_id": g.get("group_id"),
+                        "group_name": g.get("group_name"),
+                        "count": g.get("number_of_accounts", 0)
+                    })
                 page += 1
                 # Pausa para no saturar la API en paginación
                 time.sleep(1.0)
@@ -211,24 +251,110 @@ def get_driver(driver_path, debugger_address):
     return driver, wait, ActionChains(driver)
 
 
+def clean_up_tabs(driver):
+    """
+    Cierra todas las pestañas excepto la actual para que AdsPower no las guarde.
+    """
+    try:
+        current_handle = driver.current_window_handle
+        handles = driver.window_handles
+        if len(handles) > 1:
+            print(f"🧹 Limpiando {len(handles)-1} pestañas adicionales...")
+            for handle in handles:
+                if handle != current_handle:
+                    driver.switch_to.window(handle)
+                    driver.close()
+            driver.switch_to.window(current_handle)
+    except Exception as e:
+        print(f"⚠️ Error limpiando pestañas: {e}")
+
+
+def ensure_video_playing(driver):
+    """
+    Verifica mediante JS si el video está en reproducción y le da Play si está pausado.
+    """
+    try:
+        script = """
+        var vid = document.querySelector('video');
+        if (vid) {
+            if (vid.paused) {
+                vid.play();
+                return 'paused_to_playing';
+            }
+            return 'playing';
+        }
+        return 'no_video';
+        """
+        result = driver.execute_script(script)
+        if result == 'paused_to_playing':
+            print("▶️ Video detectado en pausa. Forzando Play vía JS...")
+        return result
+    except:
+        return 'error'
+
+
+def random_pre_reaction_interaction(driver):
+    """
+    Realiza movimientos de mouse y scrolls aleatorios para simular interés humano.
+    """
+    try:
+        print("🎭 Simulando comportamiento humano (interacción previa)...")
+        actions = ActionChains(driver)
+        
+        # 1. Movimiento de mouse aleatorio
+        for _ in range(random.randint(2, 4)):
+            actions.move_by_offset(random.randint(-50, 50), random.randint(-50, 50)).perform()
+            time.sleep(random.uniform(0.5, 1.5))
+            
+        # 2. Scrolls cortos de "lectura"
+        for _ in range(random.randint(1, 3)):
+            scroll = random.randint(50, 150)
+            driver.execute_script(f"window.scrollBy(0, {scroll});")
+            time.sleep(random.uniform(1, 2.5))
+            driver.execute_script(f"window.scrollBy(0, -{random.randint(20, 50)});")
+            
+    except: pass
+
+
 def check_account_status(driver):
     """
-    Verifica si la cuenta está logueada y activa.
+    Verifica si la cuenta está logueada y activa con mayor precisión.
     Retorna: "ok", "logged_out", "disabled"
     """
     try:
+        # v8: Esperar un poco a que las redirecciones de Facebook se estabilicen
+        time.sleep(4)
+        
         current_url = driver.current_url
-        if "login" in current_url or "checkpoint" in current_url:
+        
+        # 1. Detección por URL (Más fiable que el texto)
+        if "facebook.com/login" in current_url or "facebook.com/checkpoint" in current_url:
             return "logged_out"
-            
-        # Buscar elementos típicos de 'cuenta suspendida' o 'inhabilitada'
-        page_text = driver.page_source.lower()
-        if "cuenta inhabilitada" in page_text or "account disabled" in page_text or "suspended" in page_text:
+        
+        if "facebook.com/disabled" in current_url or "account_disabled" in current_url:
             return "disabled"
+            
+        # 2. Detección por Título de página (Evita falsos positivos en comentarios)
+        try:
+            title = driver.title.lower()
+            if "log in" in title or "iniciar sesión" in title:
+                return "logged_out"
+            if "disabled" in title or "inhabilitada" in title or "suspended" in title:
+                # Solo si el título lo dice explícitamente es un bloqueo
+                return "disabled"
+        except: pass
+
+        # 3. Detección de formulario de login (Si el botón de login está presente y visible)
+        login_selectors = ["input[name='lsd']", "button[name='login']", "#login_form"]
+        for sel in login_selectors:
+            try:
+                if driver.find_elements(By.CSS_SELECTOR, sel):
+                    return "logged_out"
+            except: pass
             
         return "ok"
     except:
-        return "ok" # Si falla la revisión, asumimos ok para no bloquear
+        return "ok" 
 
 
 def safe_reaction_click(driver, reaction_name):
@@ -238,14 +364,32 @@ def safe_reaction_click(driver, reaction_name):
     """
     print(f"🔎 Buscando reacción: {reaction_name}...")
     
-    # Mapeo de variaciones comunes o errores de typo
+    # Mapeo de variaciones ultra-expandido (Español, Inglés, Sistema)
     variations = [reaction_name]
-    if reaction_name == "Me encanta": variations.extend(["Love", "Heart", "Encanta"])
-    if reaction_name == "Me divierte": variations.extend(["Haha", "Laughter", "Laughing", "Funny", "Gracia", "Laugh", "Divierte"])
-    if reaction_name == "Me asombra": variations.extend(["Wow", "Astonished", "Asombra", "Surprised", "Amazing"])
-    if reaction_name == "Me entristece": variations.extend(["Sad", "Crying", "Sorry", "Entristece", "Triste"])
-    if reaction_name == "Me enoja": variations.extend(["Angry", "Mad", "Enoja", "Enfada", "Grumpy"])
-    if reaction_name == "Me importa": variations.extend(["Care", "Hug", "Importa", "Care/Heart"])
+    if reaction_name == "Me encanta": 
+        variations.extend(["Love", "Heart", "Encanta", "Love reaction", "Reacción Me encanta"])
+    if reaction_name == "Me divierte": 
+        variations.extend(["Haha", "Laughter", "Laughing", "Funny", "Gracia", "Laugh", "Divierte", "Haha reaction", "Reacción Me divierte"])
+    if reaction_name == "Me asombra": 
+        variations.extend(["Wow", "Astonished", "Asombra", "Surprised", "Amazing", "Wow reaction", "Reacción Me asombra"])
+    if reaction_name == "Me entristece": 
+        variations.extend(["Sad", "Crying", "Sorry", "Entristece", "Triste", "Sad reaction", "Reacción Me entristece"])
+    if reaction_name == "Me enoja": 
+        variations.extend(["Angry", "Mad", "Enoja", "Enfada", "Grumpy", "Angry reaction", "Reacción Me enoja"])
+    if reaction_name == "Me importa": 
+        variations.extend(["Care", "Hug", "Importa", "Care/Heart", "Care reaction", "Reacción Me importa"])
+
+    # v22: Mapeo de índices para Fallback (1:Like, 2:Love, 3:Care, 4:Haha, 5:Wow, 6:Sad, 7:Angry)
+    reaction_indices = {
+        "Me gusta": 1, "Like": 1,
+        "Me encanta": 2, "Love": 2, "Heart": 2,
+        "Me importa": 3, "Care": 3, "Hug": 3,
+        "Me divierte": 4, "Haha": 4, "Funny": 4,
+        "Me asombra": 5, "Wow": 5, "Astonished": 5,
+        "Me entristece": 6, "Sad": 6, "Sorry": 6,
+        "Me enoja": 7, "Angry": 7, "Mad": 7
+    }
+    target_idx = reaction_indices.get(reaction_name, 0)
 
     # Intentos de espera (el menú tarda unos ms en aparecer)
     for attempt in range(4): 
@@ -256,37 +400,92 @@ def safe_reaction_click(driver, reaction_name):
                     f"//div[@role='button'][contains(@aria-label, '{variant}')]",
                     f"//div[contains(@aria-label, '{variant}')][@role='img']",
                     f"//img[contains(@alt, '{variant}')]",
+                    f"//*[contains(@aria-label, '{variant}')]", # Selector más agresivo
                     f"//*[@aria-label='{variant}']",
                     f"//*[text()='{variant}']"
                 ]
                 
                 for xpath in xpaths:
-                    elements = driver.find_elements(By.XPATH, xpath)
+                    # Intento de localización de elementos con reintento por Stale
+                    try:
+                        elements = driver.find_elements(By.XPATH, xpath)
+                    except: continue
+
                     for el in elements:
                         try:
-                            if el.is_displayed():
-                                size = el.size
-                                # FILTRO v5: Ajustado para capturar iconos en diferentes zooms
-                                if size['height'] < 25 or size['width'] < 25:
+                            # Re-verificar que el elemento sigue "vivo" (evita StaleElementReferenceException)
+                            if not el.is_displayed(): continue
+                            
+                            size = el.size
+                            # FILTRO v12: Relajado para capturar iconos pequeños pero ignorar el botón principal
+                            if size['height'] < 10 or size['width'] < 10: continue
+                            
+                            # Si buscamos una reacción específica (NO "Me gusta"), ignoramos botones muy grandes
+                            if reaction_name.lower() not in ["me gusta", "like"]:
+                                if size['width'] > 85: 
                                     continue
-                                
-                                if size['height'] > 120 or size['width'] > 130:
-                                    continue 
-                                
-                                print(f"   ✅ '{variant}' encontrado ({xpath}) [{size['width']}x{size['height']}px]. Click...")
-                                
-                                # Move to element de forma segura
-                                try:
-                                    actions = ActionChains(driver)
-                                    # Moverse, esperar a que el hover del icono se active y click
-                                    actions.move_to_element(el).pause(0.5).click().perform()
-                                except:
+
+                            print(f"   ✅ '{variant}' encontrado ({xpath}) [{size['width']}x{size['height']}px]. Click...")
+                            
+                            try:
+                                actions = ActionChains(driver)
+                                actions.move_to_element(el).pause(0.2).click().perform()
+                                time.sleep(0.5)
+                                # Segundo click (JS)
+                                driver.execute_script("arguments[0].click();", el)
+                                time.sleep(1)
+                            except Exception as e:
+                                if "stale" in str(e).lower():
+                                    print("   ⚠️ Elemento se volvió obsoleto (stale), reintentando búsqueda inmediata...")
+                                    break 
+                                else:
                                     driver.execute_script("arguments[0].click();", el)
+                                    time.sleep(1)
                                     
-                                return True
-                        except:
+                            return True
+                        except Exception as e:
+                            if "stale" in str(e).lower(): break 
                             continue
             
+                # Fallback v23: Robust Index-based Click (Canvas/Lottie Support)
+                if target_idx > 0:
+                    print(f"   ⚠️ Reacción no detectada por etiqueta. Intentando Fallback por Índice v23 ({target_idx})...")
+                    
+                    # Selectores de contenedor ultra-agresivos (v23)
+                    # El contenedor tiene al menos 6 o 7 divs hijos (las reacciones)
+                    # Usamos clases atómicas comunes en el menú de reacciones
+                    container_xpaths = [
+                        "//div[@role='presentation']//div[count(div)>=6]",
+                        "//div[@role='dialog']//div[count(div)>=6]",
+                        "//div[contains(@class, 'x1uvtmcs')]//div[count(div)>=6]",
+                        "//div[contains(@class, 'x9f619')]//div[count(div)>=6]",
+                        "//div[contains(@class, 'x1n2onr6')]//div[count(div)>=6]"
+                    ]
+                    
+                    for c_xpath in container_xpaths:
+                        try:
+                            # Buscamos el div más profundo que tenga 6+ hijos
+                            containers = driver.find_elements(By.XPATH, c_xpath)
+                            # Ordenar por profundidad (el más profundo suele ser el correcto)
+                            for container in sorted(containers, key=lambda x: len(x.get_attribute('xpath') or ''), reverse=True):
+                                try:
+                                    # Facebook v23: El botón es el hijo directo o nieto
+                                    # Intentamos './div[{idx}]' o './div/div[{idx}]'
+                                    btn_xpath = f"./div[{target_idx}]"
+                                    btn = container.find_element(By.XPATH, btn_xpath)
+                                    
+                                    if btn.is_displayed():
+                                        print(f"   🎯 Blanco fijado en posición {target_idx} (Contenedor: {c_xpath})...")
+                                        
+                                        # Click compuesto (Actions + JS)
+                                        actions = ActionChains(driver)
+                                        actions.move_to_element(btn).pause(0.2).click().perform()
+                                        driver.execute_script("arguments[0].click();", btn)
+                                        time.sleep(1)
+                                        return True
+                                except: continue
+                        except: continue
+
             # Si no encontró nada, esperar un poco antes del siguiente intento
             time.sleep(1)
             
@@ -298,9 +497,10 @@ def safe_reaction_click(driver, reaction_name):
     return False
 
 
-def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me encanta"):
+def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me encanta", watch_mins=0):
     """
     Retorna: "success", "account_error", "error"
+    v17: Añadido watch_mins para combinar vista + reacción
     """
     driver, wait, actions = get_driver(driver_path, debugger_address)
     if not driver:
@@ -315,18 +515,23 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
             print(f"⚠️ Cuenta detectada como: {status}. Skipping.")
             return "account_error"
 
-        # Clean up tabs...
-        try:
-            current_handle = driver.current_window_handle
-            handles = driver.window_handles
-            if len(handles) > 1:
-                for handle in handles:
-                    if handle != current_handle:
-                        driver.switch_to.window(handle)
-                        driver.close()
-                driver.switch_to.window(current_handle)
-        except Exception as e:
-            print(f"⚠️ Advertencia limpiando pestañas: {e}")
+        # 0. Limpieza inicial de pestañas (v15)
+        clean_up_tabs(driver)
+
+        # v17: Si se solicita ver antes de reaccionar (Natural Mode)
+        if watch_mins > 0:
+            print(f"👀 Modo Natural: Viendo por {watch_mins} mins antes de reaccionar...")
+            # Reutilizamos la lógica de visualización (simulada aquí para no duplicar código)
+            start_v = time.time()
+            while (time.time() - start_v) < (watch_mins * 60):
+                human_sleep(15, 30)
+                random_pre_reaction_interaction(driver)
+        else:
+            # v17: Delay aleatorio corto (10-30s) para que no todos reaccionen al segundo exacto
+            delay = random.randint(10, 35)
+            print(f"⏳ Modo Natural: Esperando {delay}s de 'lectura' antes de reaccionar...")
+            time.sleep(delay)
+            random_pre_reaction_interaction(driver)
 
         human_sleep(5, 8)
         
@@ -419,58 +624,90 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
                     driver.execute_script("arguments[0].click();", like_button)
                 
                 human_sleep(1, 2)
-                return "success"
-
-            # --- OTRAS REACCIONES (Requieren Hover) ---
-            # 2. Realizar Hover para que salgan las reacciones
-            print("👆 Realizando Hover 'Sticky' (v5)...")
-            
-            # v5/v6: Hover sostenido y deliberado
-            actions = ActionChains(driver)
-            actions.move_to_element(like_button).perform()
-            time.sleep(1) 
-            
-            # Micro movimiento para trigger v6
-            actions.move_by_offset(2, 2).perform()
-            
-            try:
-                # Esperar a que salga la capa de reacciones
-                wait.until(EC.presence_of_element_located((By.XPATH, "//div[@role='presentation']|//div[@role='dialog']")))
-                print("✨ Capa de reacciones detectada.")
-            except:
-                pass
-
-            time.sleep(1.5) 
-            
-            print(f"🎯 Buscando reacción: {target_reaction}")
-            
-            # 3. Click en la reacción específica
-            success = safe_reaction_click(driver, target_reaction)
-
-            human_sleep(1, 2)
-            
-            # v6 Force Hold: Si falló, intentar Presión larga (3 segundos)
-            if not success:
-                print("⚠️ Intento v6 Force Hold: Click and hold (3s) sobre botón Me gusta...")
+                
+                # v10: Verificación final
                 try:
-                    actions = ActionChains(driver)
-                    actions.move_to_element(like_button).click_and_hold(like_button).pause(3.5).release().perform()
-                    human_sleep(2, 4)
-                    if safe_reaction_click(driver, target_reaction):
+                    # v23 Keywords: incluir "eliminar"
+                    new_aria = like_button.get_attribute("aria-label").lower()
+                    success_keys = ["te gusta", "liked", "reacción", "remove", "ya no", "eliminar", "un-like"]
+                    if any(x in new_aria for x in success_keys):
                         return "success"
                     else:
-                        print(f"❌ No se encontró la reacción '{target_reaction}' en el menú")
+                        print("⚠️ Verificación fallida: El botón no cambió de estado tras el click.")
                         return "error"
-                except Exception as e:
-                    print(f"❌ Error en Force Hold: {e}")
-                    return "error" # Added return here
+                except:
+                    return "success" # Si no podemos leer el aria de nuevo, asumimos success por el click previo
+
+            # --- OTRAS REACCIONES (v11: Bucle de Reintento Auto) ---
+            for attempt in range(2):
+                if attempt > 0:
+                    print(f"🔄 Reintentando reacción (Intento {attempt+1})...")
+                    # Re-abrir menú si se cerró
+                    actions = ActionChains(driver)
+                    actions.move_to_element(like_button).perform()
+                    time.sleep(1)
+                    for offset in [(2,2), (-2,-2)]:
+                        actions.move_by_offset(offset[0], offset[1]).perform()
+                        time.sleep(0.5)
+
+                # 2. Realizar Hover para que salgan las reacciones
+                print(f"👆 Preparando menú de reacciones (Intento {attempt+1})...")
+                
+                # v9/v11: Hover persistente
+                actions = ActionChains(driver)
+                actions.move_to_element(like_button).perform()
+                time.sleep(0.5)
+                for offset in [(2,2), (-2,-2), (1,1)]:
+                    actions.move_by_offset(offset[0], offset[1]).perform()
+                    time.sleep(0.3)
+                
+                try:
+                    wait.until(EC.presence_of_element_located((By.XPATH, "//div[@role='presentation']|//div[@role='dialog']|//div[contains(@class, 'x1n2onr6')]")))
+                except: pass
+
+                time.sleep(1.5) 
+                success = safe_reaction_click(driver, target_reaction)
+
+                # v11: Verificación post-click para reacciones específicas
+                if success:
+                    try:
+                        time.sleep(3) # Aumentado a 3s para persistencia v23
+                        new_aria = like_button.get_attribute("aria-label").lower()
+                        # Keywords expandidas: añadir "eliminar" y "ya no" para detectar éxito en español
+                        success_keys = ["te gusta", "reacción", "liked", "remove", "asombra", "encanta", "divierte", "enoja", "triste", "importa", "eliminar", "ya no"]
+                        if any(x in new_aria for x in success_keys):
+                            print(f"✅ Reacción verificada en el botón principal: '{new_aria}'")
+                            return "success"
+                        else:
+                            print(f"⚠️ Reacción NO persistió (Botón: '{new_aria}'). Reintentando...")
+                    except Exception as e:
+                        print(f"⚠️ Error verificando: {e}")
+                        return "success"
+                
+                # Si falló safe_reaction_click o la verificación, el bucle continúa a attempt 1
+                if not success and attempt == 0:
+                    print("⚠️ Click falló, intentando Force Hold en el reintento...")
+                    # En el siguiente intento usaremos el safe_reaction_click normal pero ya habremos forzado el menú
             
-            if success:
-                print(f"✅ Reacción enviada: {target_reaction}")
-                return "success"
-            else:
-                print(f"❌ Falló clic en: {target_reaction}")
-                return "error"
+            # --- FALLBACK FINAL: Force Hold (Si el bucle falló) ---
+            print("⚠️ Ejecutando Fallback: Force Hold (3.5s)...")
+            try:
+                actions = ActionChains(driver)
+                actions.move_to_element(like_button).click_and_hold(like_button).pause(3.5).release().perform()
+                time.sleep(2)
+                if safe_reaction_click(driver, target_reaction):
+                    # Una última validación
+                    time.sleep(2)
+                    if "me gusta" not in like_button.get_attribute("aria-label").lower():
+                        return "success"
+            except: pass
+
+            # v15: Limpieza final antes de cerrar
+            try: clean_up_tabs(driver)
+            except: pass
+
+            print(f"❌ Falló reaccion: {target_reaction} después de múltiples intentos y verificaciones.")
+            return "error"
 
         except Exception as e:
             print("❌ Error general reaccionando:")
@@ -500,13 +737,11 @@ def watch_live_video(driver_path, debugger_address, url, duration_seconds=60):
             print(f"⚠️ Cuenta detectada como: {status}. Skipping.")
             return "account_error"
     
-    # Limpieza de pestañas...
-            for handle in handles:
-                if handle != current_handle:
-                    driver.switch_to.window(handle)
-                    driver.close()
-            driver.switch_to.window(current_handle)
-    except: pass
+        # 0. Limpieza inicial de pestañas (v15)
+        clean_up_tabs(driver)
+
+    except Exception as e:
+        print(f"⚠️ Error en carga inicial: {e}")
 
     print(f"👀 Viendo video por {duration_seconds} segundos...")
     human_sleep(5, 8)
@@ -529,10 +764,19 @@ def watch_live_video(driver_path, debugger_address, url, duration_seconds=60):
                 break
         except: continue
 
-    # 2. Loop de actividad
+    # 2. Loop de actividad y monitoreo de video (v16)
     start_time = time.time()
+    last_play_check = 0
+    
     while (time.time() - start_time) < duration_seconds:
         try:
+            current_time = time.time()
+            
+            # Monitoreo de reproducción cada 10-15 segundos
+            if current_time - last_play_check > 15:
+                ensure_video_playing(driver)
+                last_play_check = current_time
+
             # Simular movimiento aleatorio cada 10-20 segundos
             human_sleep(10, 20)
             
@@ -542,7 +786,7 @@ def watch_live_video(driver_path, debugger_address, url, duration_seconds=60):
                 driver.execute_script(f"window.scrollBy(0, {scroll});")
                 time.sleep(1)
                 driver.execute_script(f"window.scrollBy(0, -{scroll});")
-                print("🖱️ Movimiento de actividad simulado.")
+                print("🖱️ Actividad simulada (Scroll).")
             else:
                 actions = ActionChains(driver)
                 actions.move_by_offset(random.randint(-5, 5), random.randint(-5, 5)).perform()
@@ -550,6 +794,9 @@ def watch_live_video(driver_path, debugger_address, url, duration_seconds=60):
             break
             
     print("✅ Tiempo de visualización completado.")
+    # v15: Limpieza final antes de cerrar
+    try: clean_up_tabs(driver)
+    except: pass
     return True
 
 
