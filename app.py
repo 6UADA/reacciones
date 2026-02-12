@@ -12,6 +12,39 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'default-secret-key-123')
 
+# Configuración de computadoras disponibles
+AVAILABLE_COMPUTERS = {
+    "chihuahua_2": {
+        "name": "Chihuahua 2",
+        "url": "https://chihuahua2.maxtres.org",
+        "key": "acd8d7802335d4783c7647c237fa580a006f72959ef9f764"
+    },
+    "chihuahua": {
+        "name": "Chihuahua",
+        "url": "https://chihuahua1.maxtres.org",
+        "key": "b09da3c5abe5bd7c31049469e8a2bbe5006f72959ef9f764"
+    },
+    "torreon": {
+        "name": "Torreón",
+        "url": "https://torreon1.maxtres.org",
+        "key": "72c370687b4892eeb0e5a25e98ef0af2006f72959ef9f764"
+    },
+    "sinaloa": {
+        "name": "Sinaloa",
+        "url": "https://sinaloa1.maxtres.org",
+        "key": "a2ba96243138aece54c8c417363ca914006f72959ef9f764"
+    },
+    "quintanaroo": {
+        "name": "Quintana Roo",
+        "url": "https://quintanaroo1.maxtres.org",
+        "key": "5ff137b4f61f4c8282e0ef32f18ee884006f72959ef9f764"
+    }
+}
+
+def get_current_api_config():
+    comp_id = session.get('selected_computer', 'chihuahua_2')
+    return AVAILABLE_COMPUTERS.get(comp_id, AVAILABLE_COMPUTERS['chihuahua_2'])
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -47,8 +80,27 @@ def index():
 @app.route('/api/groups')
 @login_required
 def get_groups():
-    groups = automation.get_ads_groups()
+    api_config = get_current_api_config()
+    groups = automation.get_ads_groups(api_config=api_config)
     return jsonify(groups)
+
+@app.route('/api/computers')
+@login_required
+def get_computers():
+    return jsonify({
+        "available": AVAILABLE_COMPUTERS,
+        "selected": session.get('selected_computer', 'chihuahua_2')
+    })
+
+@app.route('/api/set_computer', methods=['POST'])
+@login_required
+def set_computer():
+    data = request.json
+    comp_id = data.get('computer_id')
+    if comp_id in AVAILABLE_COMPUTERS:
+        session['selected_computer'] = comp_id
+        return jsonify({"status": "success", "message": f"Computadora cambiada a {AVAILABLE_COMPUTERS[comp_id]['name']}"})
+    return jsonify({"status": "error", "message": "Computadora no válida"}), 400
 
 import random
 
@@ -68,7 +120,8 @@ def start_campaign():
         return jsonify({"status": "error", "message": "Debes seleccionar un grupo de AdsPower o un rango."}), 400
 
     # Bloque de validación de cantidad de perfiles
-    all_groups = automation.get_ads_groups()
+    api_config = get_current_api_config()
+    all_groups = automation.get_ads_groups(api_config=api_config)
     total_available = 0
     in_range = False
     
@@ -79,7 +132,7 @@ def start_campaign():
         
         if in_range:
             # v29: Fetch real profiles to get accurate count (API label is inconsistent)
-            profiles = automation.get_ads_profiles(gid)
+            profiles = automation.get_ads_profiles(gid, api_config=api_config)
             count = len(profiles)
             total_available += count
             
@@ -96,7 +149,7 @@ def start_campaign():
     assignments = []
     duration_mins = float(data.get('duration_mins', 1))
     
-    thread = threading.Thread(target=run_batch, args=(assignments, url, duration_mins, counts, group_id, end_group_id))
+    thread = threading.Thread(target=run_batch, args=(assignments, url, duration_mins, counts, group_id, end_group_id, api_config))
     thread.start()
     
     msg = f"Campaña iniciada para {total_needed} perfiles."
@@ -110,12 +163,13 @@ def start_campaign():
 
 from concurrent.futures import ThreadPoolExecutor
 
-def run_batch(assignments, url, duration_mins=1, counts=None, group_id=None, end_group_id=None):
+def run_batch(assignments, url, duration_mins=1, counts=None, group_id=None, end_group_id=None, api_config=None):
     print(f"🚀 Iniciando campaña simultánea para {url} (Vistas: {duration_mins} min)")
+    print(f"💻 Usando computadora: {api_config['name'] if api_config else 'Default'}")
 
     if group_id and counts:
         print("📥 Cargando perfiles de los grupos seleccionados...")
-        all_groups = automation.get_ads_groups()
+        all_groups = automation.get_ads_groups(api_config=api_config)
         range_profiles = []
         in_range = False
         for g in all_groups:
@@ -123,7 +177,7 @@ def run_batch(assignments, url, duration_mins=1, counts=None, group_id=None, end
             if gid == str(group_id): in_range = True
             if in_range:
                 print(f"   📥 Extrayendo perfiles del grupo: {g['group_name']}...")
-                range_profiles.extend(automation.get_ads_profiles(gid))
+                range_profiles.extend(automation.get_ads_profiles(gid, api_config=api_config))
             if end_group_id and gid == str(end_group_id): break
             if not end_group_id: break 
 
@@ -169,7 +223,7 @@ def run_batch(assignments, url, duration_mins=1, counts=None, group_id=None, end
             print(f"🟢 Perfil {pid} iniciando...")
             
             is_headless = True
-            data = automation.start_browser(pid, headless=is_headless)
+            data = automation.start_browser(pid, headless=is_headless, api_config=api_config)
             if not data:
                 print(f"❌ Error iniciando {pid}")
                 pid = None
@@ -200,7 +254,7 @@ def run_batch(assignments, url, duration_mins=1, counts=None, group_id=None, end
                 print(f"❌ Error en automatización ({pid}): {e}")
                 status = "error"
                 
-            automation.close_browser(pid)
+            automation.close_browser(pid, api_config=api_config)
 
             if status == "success":
                 with summary_lock:

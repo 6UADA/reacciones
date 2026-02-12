@@ -213,12 +213,22 @@
                         <p class="text-xs text-txt-muted">Panel de control de reacciones</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2">
-                    <span
-                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                        Conectado
-                    </span>
+                <div class="flex items-center gap-4">
+                    <div class="flex flex-col items-end">
+                        <label
+                            class="text-[10px] text-txt-muted uppercase tracking-wider font-bold mb-1">Computadora</label>
+                        <select id="computerSelect" onchange="changeComputer(this.value)"
+                            class="bg-surface-input border border-edge text-txt-primary text-xs rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-brand cursor-pointer">
+                            <option value="">Cargando...</option>
+                        </select>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span id="connectionStatus"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            Conectado
+                        </span>
+                    </div>
                 </div>
             </div>
         </header>
@@ -472,8 +482,56 @@
         let allGroupsData = [];
         let campaignMode = 'views'; // v24: Default mode (Hiding reactions for now)
 
-        // Load groups on start
+        // Load computers and groups on start
         document.addEventListener('DOMContentLoaded', () => {
+            loadComputers();
+            fetchGroups();
+        });
+
+        function loadComputers() {
+            fetch('/api/computers')
+                .then(r => r.json())
+                .then(data => {
+                    const select = document.getElementById('computerSelect');
+                    select.innerHTML = '';
+
+                    Object.keys(data.available).forEach(id => {
+                        const opt = document.createElement('option');
+                        opt.value = id;
+                        opt.innerText = data.available[id].name;
+                        if (id === data.selected) opt.selected = true;
+                        select.appendChild(opt);
+                    });
+                })
+                .catch(err => {
+                    console.error('Error fetching computers:', err);
+                    document.getElementById('computerSelect').innerHTML = '<option value="">Error</option>';
+                });
+        }
+
+        function changeComputer(compId) {
+            addLog('Cambiando computadora...', 'info');
+            fetch('/api/set_computer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ computer_id: compId })
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        addLog(data.message, 'success');
+                        fetchGroups(); // Recargar grupos para la nueva computadora
+                    } else {
+                        addLog('Error: ' + data.message, 'error');
+                    }
+                })
+                .catch(err => addLog('Error cambiando computadora', 'error'));
+        }
+
+        function fetchGroups() {
+            document.getElementById('fromGroup').innerHTML = '<option value="">Cargando grupos...</option>';
+            document.getElementById('toGroup').innerHTML = '<option value="">Cargando grupos...</option>';
+
             fetch('/api/groups')
                 .then(r => r.json())
                 .then(groups => {
@@ -484,7 +542,7 @@
                     console.error('Error fetching groups:', err);
                     document.getElementById('fromGroup').innerHTML = '<option value="">Error cargando grupos</option>';
                 });
-        });
+        }
 
         // Search filter logic
         document.getElementById('groupFilter').addEventListener('input', (e) => {

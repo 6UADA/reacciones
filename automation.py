@@ -46,7 +46,11 @@ def random_scroll(driver):
 
 
 # ---------- ADSPOWER ----------
-def start_browser(user_id, headless=True):
+def start_browser(user_id, headless=True, api_config=None):
+    # Get config from args or environment
+    api_url = api_config.get("url", ADSPOWER_API_URL) if api_config else ADSPOWER_API_URL
+    api_key = api_config.get("key", API_KEY) if api_config else API_KEY
+
     #Modo sin cabeza y banderas de optimización de alto rendimiento
     headless_flag = "1" if headless else "0"
     
@@ -85,43 +89,47 @@ def start_browser(user_id, headless=True):
     import json
     launch_args = json.dumps(opt_flags)
     
-    url = f"{ADSPOWER_API_URL}/api/v1/browser/start?user_id={user_id}&headless={headless_flag}&launch_args={launch_args}"
+    url = f"{api_url}/api/v1/browser/start?user_id={user_id}&headless={headless_flag}&launch_args={launch_args}"
     headers = {
-        "Authorization": f"Bearer {API_KEY}"
+        "Authorization": f"Bearer {api_key}"
     }
 
     resp = requests.get(url, headers=headers)
 
     if resp.status_code != 200:
-        print("❌ AdsPower no respondió")
+        print(f"❌ AdsPower no respondió ({api_url})")
         return None
 
     data = resp.json()
 
     if data["code"] == 0:
-        print("🟢 Perfil iniciado")
+        print(f"🟢 Perfil iniciado en {api_url}")
         return data["data"]
     else:
-        print(f"❌ Error iniciando perfil {user_id}: {data['msg']}")
+        print(f"❌ Error iniciando perfil {user_id} en {api_url}: {data['msg']}")
         return None
 
 
-def close_browser(user_id):
-    url = f"{ADSPOWER_API_URL}/api/v1/browser/stop?user_id={user_id}"
+def close_browser(user_id, api_config=None):
+    api_url = api_config.get("url", ADSPOWER_API_URL) if api_config else ADSPOWER_API_URL
+    api_key = api_config.get("key", API_KEY) if api_config else API_KEY
+    url = f"{api_url}/api/v1/browser/stop?user_id={user_id}"
     headers = {
-        "Authorization": f"Bearer {API_KEY}"
+        "Authorization": f"Bearer {api_key}"
     }
     requests.get(url, headers=headers)
 
 
 # ---------- API HELPERS ----------
-def get_ads_groups():
+def get_ads_groups(api_config=None):
     """Obtiene la lista de todos los grupos de AdsPower y los ordena con manejo de rate limit"""
+    api_url = api_config.get("url", ADSPOWER_API_URL) if api_config else ADSPOWER_API_URL
+    api_key = api_config.get("key", API_KEY) if api_config else API_KEY
     groups = []
     page = 1
     while True:
-        url = f"{ADSPOWER_API_URL}/api/v1/group/list?page={page}&page_size=100"
-        headers = {"Authorization": f"Bearer {API_KEY}"}
+        url = f"{api_url}/api/v1/group/list?page={page}&page_size=100"
+        headers = {"Authorization": f"Bearer {api_key}"}
         try:
             resp = requests.get(url, headers=headers)
             data = resp.json()
@@ -143,10 +151,10 @@ def get_ads_groups():
                 time.sleep(2)
                 continue
             else:
-                print(f"⚠️ Error API AdsPower (Groups): {data.get('msg')}")
+                print(f"⚠️ Error API AdsPower (Groups) en {api_url}: {data.get('msg')}")
                 break
         except Exception as e:
-            print(f"⚠️ Excepción obteniendo grupos: {e}")
+            print(f"⚠️ Excepción obteniendo grupos en {api_url}: {e}")
             break
     
     # Filtrar grupos del 1 al 16 (son de otra red social, sin Facebook)
@@ -177,13 +185,15 @@ def get_ads_groups():
     return filtered_groups
 
 
-def get_ads_profiles(group_id):
+def get_ads_profiles(group_id, api_config=None):
     """Obtiene todos los perfiles de un grupo específico con manejo de rate limit"""
+    api_url = api_config.get("url", ADSPOWER_API_URL) if api_config else ADSPOWER_API_URL
+    api_key = api_config.get("key", API_KEY) if api_config else API_KEY
     ids = []
     page = 1
     while True:
-        url = f"{ADSPOWER_API_URL}/api/v1/user/list?group_id={group_id}&page={page}&page_size=100"
-        headers = {"Authorization": f"Bearer {API_KEY}"}
+        url = f"{api_url}/api/v1/user/list?group_id={group_id}&page={page}&page_size=100"
+        headers = {"Authorization": f"Bearer {api_key}"}
         
         try:
             resp = requests.get(url, headers=headers)
@@ -210,31 +220,53 @@ def get_ads_profiles(group_id):
                 time.sleep(2)
                 continue
             else:
-                print(f"❌ Error obteniendo perfiles del grupo {group_id}: {data.get('msg')}")
+                print(f"❌ Error obteniendo perfiles del grupo {group_id} en {api_url}: {data.get('msg')}")
                 break
         except Exception as e:
-            print(f"⚠️ Excepción obteniendo perfiles del grupo {group_id}: {e}")
+            print(f"⚠️ Excepción obteniendo perfiles del grupo {group_id} en {api_url}: {e}")
             break
             
     return ids
 
 
 # ---------- FACEBOOK ----------
-def get_driver(driver_path, debugger_address):
+def get_driver(driver_path, debugger_address, api_config=None):
     chrome_options = Options()
-    chrome_options.add_experimental_option("debuggerAddress", debugger_address)
+    
+    # Si estamos en modo remoto, redirigimos el debugger a la IP interna de la PC
+    # que es visible para el servidor a través de Cloudflare WARP/Private Network
+    target_address = debugger_address
+    is_remote = False
+    if api_config and "127.0.0.1" in debugger_address:
+        is_remote = True
+        remote_host = api_config.get("internal_ip")
+        if not remote_host:
+            # Fallback a hostname del URL si no hay IP interna
+            from urllib.parse import urlparse
+            parsed = urlparse(api_config.get("url", ""))
+            remote_host = parsed.hostname
+            
+        if remote_host:
+            target_address = debugger_address.replace("127.0.0.1", remote_host)
+            print(f"   🌐 Redireccionando debugger de 127.0.0.1 a {target_address}")
 
-    # Extract port from debugger_address (e.g., "127.0.0.1:50000")
-    webdriver_port = debugger_address.split(':')[-1]
+    chrome_options.add_experimental_option("debuggerAddress", target_address)
 
     # Intentar conexión con reintentos para evitar Read Timeout durante el arranque
     max_retries = 3
     driver = None
     for attempt in range(max_retries):
         try:
-            print(f"   🔧 Conectando Selenium a puerto {webdriver_port} (Intento {attempt+1})...")
-            # Revertido v7: Usar webdriver.Chrome directo sobre el puerto de depuración
-            service = Service(driver_path)
+            print(f"   🔧 Conectando Selenium a {target_address} (Intento {attempt+1})...")
+            
+            if is_remote:
+                # Usar webdriver-manager para asegurar un driver compatible en el servidor
+                from webdriver_manager.chrome import ChromeDriverManager
+                service = Service(ChromeDriverManager().install())
+            else:
+                # Local: Usar el driver que proporciona AdsPower
+                service = Service(driver_path)
+                
             driver = webdriver.Chrome(service=service, options=chrome_options)
             
             # Tiempos aumentados para entornos con mucha carga
@@ -246,7 +278,8 @@ def get_driver(driver_path, debugger_address):
                 print(f"   ⚠️ Error de conexión, reintentando en 3s...")
                 time.sleep(3)
             else:
-                print(f"   ❌ Error fatal conectando a AdsPower local: {e}")
+                contexto = "remoto" if is_remote else "local"
+                print(f"   ❌ Error fatal conectando a AdsPower {contexto}: {e}")
                 return None, None, None
     
     if driver is None:
@@ -601,12 +634,12 @@ def react_via_keyboard(driver, target_reaction):
         return False
 
 
-def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me encanta", watch_mins=0):
+def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me encanta", watch_mins=0, api_config=None):
     """
     Retorna: "success", "account_error", "error"
     v17: Añadido watch_mins para combinar vista + reacción
     """
-    driver, wait, actions = get_driver(driver_path, debugger_address)
+    driver, wait, actions = get_driver(driver_path, debugger_address, api_config=api_config)
     if not driver:
         return "error"
 
@@ -883,11 +916,11 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
         return "error"
 
 
-def watch_live_video(driver_path, debugger_address, url, duration_seconds=60):
+def watch_live_video(driver_path, debugger_address, url, duration_seconds=60, api_config=None):
     """
     Retorna: "success", "account_error", "error"
     """
-    driver, wait, actions = get_driver(driver_path, debugger_address)
+    driver, wait, actions = get_driver(driver_path, debugger_address, api_config=api_config)
     if not driver:
         return "error"
 
