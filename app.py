@@ -34,6 +34,32 @@ def start_campaign():
     if not group_id:
         return jsonify({"status": "error", "message": "Debes seleccionar un grupo de AdsPower o un rango."}), 400
 
+    # Bloque de validación de cantidad de perfiles
+    all_groups = automation.get_ads_groups()
+    total_available = 0
+    in_range = False
+    
+    for g in all_groups:
+        gid = str(g['group_id'])
+        if gid == str(group_id): 
+            in_range = True
+        
+        if in_range:
+            # v29: Fetch real profiles to get accurate count (API label is inconsistent)
+            profiles = automation.get_ads_profiles(gid)
+            count = len(profiles)
+            total_available += count
+            
+            # Si no hay rango (un solo grupo), o si llegamos al final del rango, salimos
+            if not end_group_id or gid == str(end_group_id):
+                break
+
+    if total_needed > total_available:
+        return jsonify({
+            "status": "error", 
+            "message": f"No hay suficientes perfiles. Necesitas {total_needed} pero solo hay {total_available} en los grupos seleccionados."
+        }), 400
+
     assignments = []
     duration_mins = float(data.get('duration_mins', 1))
     

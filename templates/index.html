@@ -259,7 +259,7 @@
                                 </svg>
                             </div>
                             <div>
-                                <h2 class="text-base font-semibold text-txt-primary">Rango de Grupos</h2> 
+                                <h2 class="text-base font-semibold text-txt-primary">Rango de Grupos</h2>
                                 <p class="text-xs text-txt-muted">Selecciona el rango de grupos para la campaña</p>
                             </div>
                         </div>
@@ -307,7 +307,7 @@
                         </div>
                         <div class="flex flex-col items-end gap-1">
                             <div id="totalBadge"
-                                class="total-badge px-4 py-2 rounded-xl text-sm font-semibold text-brand-light">
+                                class="total-badge px-4 py-2 rounded-xl text-sm font-semibold text-brand-light hidden">
                                 Total: <span id="totalCount">0</span>
                             </div>
                             <div id="capacityAlert" class="text-[10px] font-medium text-amber-400 hidden">
@@ -316,8 +316,8 @@
                         </div>
                     </div>
 
-                    <!-- Mode Selector v24 -->
-                    <div class="flex p-1 bg-surface-input rounded-xl border border-edge mb-6 max-w-sm mx-auto">
+                    <!-- Mode Selector v24 (Hidden per user request) -->
+                    <div class="hidden flex p-1 bg-surface-input rounded-xl border border-edge mb-6 max-w-sm mx-auto">
                         <button id="modeReactions" onclick="setCampaignMode('reactions')"
                             class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all bg-brand text-white shadow-glow">
                             Reacciones
@@ -328,8 +328,8 @@
                         </button>
                     </div>
 
-                    <!-- Grid de Reacciones -->
-                    <div id="reactionsGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    <!-- Grid de Reacciones (Hidden per user request) -->
+                    <div id="reactionsGrid" class="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                         <!-- Like -->
                         <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
                             data-reaction="like">
@@ -389,7 +389,7 @@
                     </div>
 
                     <!-- Grid de Visualizaciones -->
-                    <div id="viewsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
+                    <div id="viewsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
                         <!-- Views -->
                         <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
                             data-reaction="views">
@@ -470,7 +470,7 @@
 
         // Global group storage for filtering
         let allGroupsData = [];
-        let campaignMode = 'reactions'; // v24: Default mode
+        let campaignMode = 'views'; // v24: Default mode (Hiding reactions for now)
 
         // Load groups on start
         document.addEventListener('DOMContentLoaded', () => {

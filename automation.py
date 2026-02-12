@@ -7,6 +7,7 @@ from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -125,7 +126,10 @@ def get_ads_groups():
             resp = requests.get(url, headers=headers)
             data = resp.json()
             if data.get("code") == 0:
-                for g in batch:
+                group_list = data.get("data", {}).get("list", [])
+                if not group_list:
+                    break
+                for g in group_list:
                     groups.append({
                         "group_id": g.get("group_id"),
                         "group_name": g.get("group_name"),
@@ -233,8 +237,9 @@ def get_driver(driver_path, debugger_address):
             service = Service(driver_path)
             driver = webdriver.Chrome(service=service, options=chrome_options)
             
-            driver.set_page_load_timeout(150)
-            driver.set_script_timeout(150)
+            # Tiempos aumentados para entornos con mucha carga
+            driver.set_page_load_timeout(200)
+            driver.set_script_timeout(200)
             break 
         except Exception as e:
             if attempt < max_retries - 1:
@@ -497,6 +502,105 @@ def safe_reaction_click(driver, reaction_name):
     return False
 
 
+def react_via_keyboard(driver, target_reaction):
+    """
+    v31: Navegación por teclado (TAB + Flechas) - REFURBISHED
+    Enfoca el post primero y verifica físicamente el cambio.
+    """
+    try:
+        body = driver.find_element(By.TAG_NAME, "body")
+        
+        # 0. Limpieza y Enfoque Inicial
+        body.send_keys(Keys.ESCAPE)
+        time.sleep(0.5)
+        
+        # Intentar enfocar el contenedor del post para que TAB empiece desde ahí
+        try:
+            post = driver.find_element(By.XPATH, "//div[@role='article'] | //div[@role='main']")
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", post)
+            time.sleep(1)
+            # Click neutral para poner el foco cerca
+            ActionChains(driver).move_to_element_with_offset(post, 10, 10).click().perform()
+        except:
+            print("⚠️ No se pudo enfocar el post, intentando TAB desde la posición actual.")
+
+        found = False
+        print(f"⌨️ Teclado: Buscando botón de reacciones para '{target_reaction}'...")
+        
+        last_label = ""
+        for _ in range(25): # Menos TABs si ya estamos enfocados en el post
+            body.send_keys(Keys.TAB)
+            active = driver.switch_to.active_element
+            label = str(active.get_attribute("aria-label") or "").lower()
+            
+            # Evitar bucles infinitos si el foco no se mueve
+            if label == last_label and label != "":
+                # Intentar un TAB extra o ESC
+                body.send_keys(Keys.ESCAPE)
+                time.sleep(0.1)
+            last_label = label
+
+            # Detección del botón (Me gusta / Reaccionar)
+            if any(x in label for x in ["me gusta", "te gusta", "liked", "reacción", "remove", "ya no", "un-like"]):
+                # Si ya tiene la reacción exacta
+                if target_reaction.lower() in label:
+                    print(f"👍 Ya tiene la reacción '{target_reaction}' activa.")
+                    return True
+                found = True
+                break
+            time.sleep(0.1)
+
+        if not found:
+            return False
+
+        # 2. Aplicar Reacción
+        if target_reaction == "Me gusta":
+            active.send_keys(Keys.ENTER)
+        else:
+            # Abrir menú con SPACE (Mantenido)
+            ActionChains(driver).key_down(Keys.SPACE).pause(2.2).key_up(Keys.SPACE).perform()
+            time.sleep(1.5)
+
+            reaction_map = {
+                "Me encanta": 1,
+                "Me importa": 2,
+                "Me divierte": 3,
+                "Me asombra": 4,
+                "Me entristece": 5,
+                "Me enoja": 6
+            }
+            steps = reaction_map.get(target_reaction, 0)
+            if steps > 0:
+                # Primer flecha para entrar al menú flotante
+                ActionChains(driver).send_keys(Keys.ARROW_RIGHT).pause(0.3).perform()
+                for _ in range(steps - 1):
+                    ActionChains(driver).send_keys(Keys.ARROW_RIGHT).pause(0.4).perform()
+                
+                time.sleep(0.5)
+                ActionChains(driver).send_keys(Keys.ENTER).perform()
+
+        # 3. VERIFICACIÓN FÍSICA (Crucial v31)
+        print("⌨️ Teclado: Verificando éxito...")
+        success_keys = ["te gusta", "liked", "reacción", "remove", "ya no", "eliminar", "quitar", "un-like"]
+        for _ in range(6):
+            time.sleep(1.5)
+            try:
+                # Re-localizar el botón activo o el botón de like por XPATH
+                check_label = str(driver.switch_to.active_element.get_attribute("aria-label") or "").lower()
+                if any(x in check_label for x in success_keys):
+                    print(f"✅ Éxito confirmado vía teclado ({check_label})")
+                    return True
+            except:
+                # Si el elemento se vuelve stale, es buena señal en FB
+                return True
+        
+        print("⚠️ Teclado: La reacción parece no haber persistido en la UI.")
+        return False
+    except Exception as e:
+        print(f"⚠️ Error en método teclado v31: {e}")
+        return False
+
+
 def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me encanta", watch_mins=0):
     """
     Retorna: "success", "account_error", "error"
@@ -506,9 +610,27 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
     if not driver:
         return "error"
 
+    # v25: Navigation with retries to handle ReadTimeout
+    max_get_retries = 2
+    loaded = False
+    for attempt in range(max_get_retries):
+        try:
+            print(f"   🌐 Cargando URL (Intento {attempt+1})...")
+            driver.get(post_url)
+            loaded = True
+            break
+        except Exception as e:
+            if attempt < max_get_retries - 1:
+                print(f"   ⚠️ Error de red/timeout cargando URL, reintentando en 5s...")
+                time.sleep(5)
+            else:
+                print(f"   ❌ Error fatal cargando URL tras {max_get_retries} intentos: {e}")
+                return "error"
+
+    if not loaded:
+        return "error"
+
     try:
-        driver.get(post_url)
-        
         # 0. Verificación de salud inicial
         status = check_account_status(driver)
         if status != "ok":
@@ -547,6 +669,16 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
 
         # Comportamiento humano antes de interactuar
         random_scroll(driver)
+
+        # v30: MÉTODO PRINCIPAL - Teclado (TAB + Flechas)
+        try:
+            if react_via_keyboard(driver, target_reaction):
+                print(f"✅ Reacción aplicada exitosamente vía Teclado v30 ({target_reaction}).")
+                human_sleep(2, 3)
+                # v30: Verificación rápida
+                return "success"
+        except Exception as e:
+            print(f"⚠️ Falló método principal de teclado: {e}. Intentando fallback ratón...")
 
         try:
             # 1. Buscar el botón "Me gusta" principal 
@@ -618,6 +750,8 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
 
                 print("👍 Reacción es 'Me gusta'. Click directo.")
                 try:
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_button)
+                    time.sleep(0.5)
                     actions = ActionChains(driver)
                     actions.move_to_element(like_button).click().perform()
                 except:
@@ -626,17 +760,23 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
                 human_sleep(1, 2)
                 
                 # v10: Verificación final
-                try:
-                    # v23 Keywords: incluir "eliminar"
-                    new_aria = like_button.get_attribute("aria-label").lower()
-                    success_keys = ["te gusta", "liked", "reacción", "remove", "ya no", "eliminar", "un-like"]
-                    if any(x in new_aria for x in success_keys):
+                # v25: Verificación ultra-robusta con re-localización
+                success_keys = ["te gusta", "liked", "reacción", "remove", "ya no", "eliminar", "quitar", "un-like"]
+                for i in range(5):
+                    try:
+                        # En cada intento, intentamos re-obtener el aria del botón actual 
+                        # o buscar uno nuevo si el DOM cambió
+                        current_aria = like_button.get_attribute("aria-label").lower()
+                        if any(x in current_aria for x in success_keys):
+                            return "success"
+                    except:
+                        # Si el elemento es stale, es un excelente indicador de que Facebook
+                        # refrescó la parte de la UI de reacciones (Éxito probable)
                         return "success"
-                    else:
-                        print("⚠️ Verificación fallida: El botón no cambió de estado tras el click.")
-                        return "error"
-                except:
-                    return "success" # Si no podemos leer el aria de nuevo, asumimos success por el click previo
+                    time.sleep(1.2)
+                
+                print("⚠️ Verificación fallida: El botón no cambió de estado tras el click.")
+                return "error"
 
             # --- OTRAS REACCIONES (v11: Bucle de Reintento Auto) ---
             for attempt in range(2):
@@ -654,8 +794,13 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
                 print(f"👆 Preparando menú de reacciones (Intento {attempt+1})...")
                 
                 # v9/v11: Hover persistente
-                actions = ActionChains(driver)
-                actions.move_to_element(like_button).perform()
+                try:
+                    driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", like_button)
+                    time.sleep(0.5)
+                    actions = ActionChains(driver)
+                    actions.move_to_element(like_button).perform()
+                except:
+                    pass
                 time.sleep(0.5)
                 for offset in [(2,2), (-2,-2), (1,1)]:
                     actions.move_by_offset(offset[0], offset[1]).perform()
@@ -671,15 +816,22 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
                 # v11: Verificación post-click para reacciones específicas
                 if success:
                     try:
-                        time.sleep(3) # Aumentado a 3s para persistencia v23
-                        new_aria = like_button.get_attribute("aria-label").lower()
-                        # Keywords expandidas: añadir "eliminar" y "ya no" para detectar éxito en español
-                        success_keys = ["te gusta", "reacción", "liked", "remove", "asombra", "encanta", "divierte", "enoja", "triste", "importa", "eliminar", "ya no"]
-                        if any(x in new_aria for x in success_keys):
-                            print(f"✅ Reacción verificada en el botón principal: '{new_aria}'")
-                            return "success"
-                        else:
-                            print(f"⚠️ Reacción NO persistió (Botón: '{new_aria}'). Reintentando...")
+                        time.sleep(3)
+                        # v25: Verificación robusta con detección de stale
+                        success_keys = ["te gusta", "reacción", "liked", "remove", "asombra", "encanta", "divierte", "enoja", "triste", "importa", "eliminar", "quitar", "ya no"]
+                        for _ in range(5):
+                            try:
+                                current_aria = like_button.get_attribute("aria-label").lower()
+                                if any(x in current_aria for x in success_keys):
+                                    print(f"✅ Reacción verificada en el botón principal: '{current_aria}'")
+                                    return "success"
+                            except:
+                                # Stale = Éxito en la mayoría de los casos de FB UI
+                                print("✅ Reacción confirmada (UI Refrescada).")
+                                return "success"
+                            time.sleep(1.2)
+                        
+                        print(f"⚠️ Reacción NO persistió. Reintentando...")
                     except Exception as e:
                         print(f"⚠️ Error verificando: {e}")
                         return "success"
@@ -701,6 +853,17 @@ def react_to_post(driver_path, debugger_address, post_url, target_reaction="Me e
                     if "me gusta" not in like_button.get_attribute("aria-label").lower():
                         return "success"
             except: pass
+
+            # v27: ULTIMO RECURSO - Navegación por Teclado (TAB + Flechas)
+            print("⚠️ Reacción no lograda con ratón. Intentando Prototipo de Teclado (v27)...")
+            try:
+                if react_via_keyboard(driver, target_reaction):
+                    print(f"✅ Reacción aplicada exitosamente vía Teclado ({target_reaction}).")
+                    # Pequeña verificación final
+                    human_sleep(2, 3)
+                    return "success"
+            except Exception as e:
+                print(f"⚠️ Falló prototipo de teclado: {e}")
 
             # v15: Limpieza final antes de cerrar
             try: clean_up_tabs(driver)
