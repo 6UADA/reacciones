@@ -1,19 +1,46 @@
-from flask import Flask, render_template, request, jsonify
-import json
-import threading
-import time
-import automation
-from dotenv import load_dotenv
+import os
+from functools import wraps
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 
 load_dotenv()
 
 app = Flask(__name__)
+app.secret_key = os.getenv('SECRET_KEY', 'default-secret-key-123')
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'logged_in' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if username == os.getenv('LOGIN_USER') and password == os.getenv('LOGIN_PASSWORD'):
+            session['logged_in'] = True
+            return redirect(url_for('index'))
+        else:
+            return render_template('login.html', error="Credenciales incorrectas")
+            
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
 
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
 @app.route('/api/groups')
+@login_required
 def get_groups():
     groups = automation.get_ads_groups()
     return jsonify(groups)
@@ -21,6 +48,7 @@ def get_groups():
 import random
 
 @app.route('/start_campaign', methods=['POST'])
+@login_required
 def start_campaign():
     data = request.json
     url = data.get('url')
