@@ -47,6 +47,14 @@ El sistema ahora está protegido por una pantalla de inicio de sesión.
 
 Puedes cambiar estas credenciales en el archivo `.env`.
 
+## Inicio Automático con Windows
+
+Si quieres que el sistema se inicie solo al prender la PC:
+
+1.  Presiona `Win + R`, escribe `shell:startup` y dale a Enter.
+2.  Crea un **acceso directo** del archivo `iniciar_sistema.bat` dentro de esa carpeta.
+3.  ¡Listo! La próxima vez que inicies Windows, se abrirán las dos ventanas (servidor y túnel) automáticamente.
+
 ## Estructura
 
 - `app.py`: Servidor web Flask con protección de rutas.
