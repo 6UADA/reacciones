@@ -17,7 +17,7 @@ if exist venv\Scripts\activate (
 
 :: 2. Iniciar el servidor Flask en una ventana nueva
 echo [2/3] Iniciando servidor web (app.py)...
-start "Reaction Manager - Server" cmd /k "python app.py"
+start "Reaction Manager - Server" pyth "python app.py"
 
 :: 3. Esperar a que el servidor cargue antes de abrir el túnel
 timeout /t 5 /nobreak > nul
