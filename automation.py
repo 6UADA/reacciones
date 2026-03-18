@@ -207,41 +207,111 @@ def watch_live_video(driver_path, debugger_address, url, duration_seconds=60):
     Simula visualización de un video en vivo.
     Entra al link, da play si es necesario y se queda simulando actividad.
     """
+    log_to_web(f"🕵️ Conectando driver para automatización...", "info")
     driver, wait, actions = get_driver(driver_path, debugger_address)
-    driver.get(url)
     
-    # Limpieza de pestañas...
+    # 1. Limpieza de pestañas (Dejar solo una)
     try:
-        current_handle = driver.current_window_handle
         handles = driver.window_handles
         if len(handles) > 1:
-            for handle in handles:
-                if handle != current_handle:
-                    driver.switch_to.window(handle)
-                    driver.close()
-            driver.switch_to.window(current_handle)
-    except: pass
+            log_to_web(f"🧹 Limpiando {len(handles)-1} pestañas extra...", "info")
+            main_handle = handles[0]
+            for handle in handles[1:]:
+                driver.switch_to.window(handle)
+                driver.close()
+            driver.switch_to.window(main_handle)
+    except Exception as e:
+        log_to_web(f"⚠️ Error limpiando pestañas: {e}", "warning")
+
+    # 2. Navegación
+    if url and not url.startswith('http'):
+        url = 'https://' + url
+        
+    log_to_web(f"🌐 Navegando a: {url}", "info")
+    try:
+        driver.get(url)
+    except Exception as e:
+        log_to_web(f"❌ Error en driver.get: {e}", "error")
+        return False
 
     print(f"Viendo video por {duration_seconds} segundos...")
     human_sleep(5, 8)
     
-    # 1. Intentar dar Play si no arrancó solo
-    play_selectors = [
-        "//div[@role='button'][@aria-label='Reproducir']",
-        "//div[@role='button'][@aria-label='Play']",
-        "//div[@role='button'][@aria-label='Continuar']",
-        "//video/ancestor::div[1]"
-    ]
+    # 1. Intentar dar Play y desbloquear (Incluso dentro de IFrames)
+    log_to_web("🔍 Iniciando secuencia de desbloqueo profunda...", "info")
     
-    for selector in play_selectors:
+    # Función de ayuda para clickar el botón de play
+    def try_click_play(ctx):
+        selectors = [
+            "//div[contains(text(), 'permitir')]",
+            "//div[contains(text(), 'Haga clic')]",
+            "//*[contains(@class, 'play')]",
+            "//button[contains(@aria-label, 'Play')]",
+            "//div[@role='button']",
+            "//video"
+        ]
+        for s in selectors:
+            try:
+                # Buscamos elementos visibles
+                elements = ctx.find_elements(By.XPATH, s)
+                for el in elements:
+                    if el.is_displayed():
+                        # Intentamos click normal
+                        try:
+                            actions = ActionChains(driver)
+                            actions.move_to_element(el).click().perform()
+                            log_to_web(f"🎯 Click (Action) en {s[:20]}...", "success")
+                            return True
+                        except: pass
+                        # Fallback JS
+                        driver.execute_script("arguments[0].click();", el)
+                        log_to_web(f"🎯 Click (JS) en {s[:20]}...", "success")
+                        return True
+            except: continue
+        return False
+
+    # Primero buscamos en el documento principal
+    found = try_click_play(driver)
+    
+    # Si no lo encontramos, buscamos en todos los iframes
+    if not found:
+        log_to_web("📂 Buscando botón en iframes internos...", "info")
+        iframes = driver.find_elements(By.TAG_NAME, "iframe")
+        for i, frame in enumerate(iframes):
+            try:
+                driver.switch_to.frame(frame)
+                if try_click_play(driver):
+                    log_to_web(f"✅ Desbloqueado dentro de IFrame #{i+1}", "success")
+                    found = True
+                    # NO salimos del frame si el video está dentro
+                    break
+                driver.switch_to.default_content()
+            except:
+                driver.switch_to.default_content()
+                continue
+    
+    if not found:
+        log_to_web("⚠️ No se detectó botón obvio, intentando click central forzado...", "warning")
         try:
-            btn = driver.find_element(By.XPATH, selector)
-            if btn.is_displayed():
-                actions = ActionChains(driver)
-                actions.move_to_element(btn).click().perform()
-                print("Play clicado.")
+            # Click en el centro de la pantalla como último recurso
+            size = driver.get_window_size()
+            actions = ActionChains(driver)
+            actions.move_by_offset(size['width']//2, size['height']//2).click().perform()
+        except: pass
+
+    human_sleep(3, 5)
+    log_to_web("🎬 Iniciando simulación de visualización...", "info")
+
+    # Intentar desmutear (Opcional pero recomendado para views)
+    try:
+        mute_selectors = ["//button[contains(@aria-label, 'unmute')]", "//button[contains(@aria-label, 'activar sonido')]"]
+        for s in mute_selectors:
+            m_btn = driver.find_elements(By.XPATH, s)
+            if m_btn and m_btn[0].is_displayed():
+                driver.execute_script("arguments[0].click();", m_btn[0])
+                log_to_web("🔊 Video desmuiteado para validez de view.", "success")
                 break
-        except: continue
+    except: pass
 
     # 2. Loop de actividad
     start_time = time.time()
