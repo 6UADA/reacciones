@@ -424,7 +424,9 @@
                     Object.keys(data.available).forEach(id => {
                         const opt = document.createElement('option');
                         opt.value = id;
-                        opt.innerText = data.available[id].name;
+                        let name = data.available[id].name;
+                        if (id === data.this_machine) name += ' (Esta PC)';
+                        opt.innerText = name;
                         if (id === data.selected) opt.selected = true;
                         select.appendChild(opt);
                     });

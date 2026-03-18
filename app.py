@@ -16,13 +16,18 @@ else:
 import automation  # Ahora automation cargará las variables correctas del .env
 from logger_shared import log_to_web, get_logs
 
-app = Flask(__name__)
+# --- DETERMINAR RUTA BASE PARA RECURSOS ---
 if getattr(sys, 'frozen', False):
-    application_path = sys._MEIPASS
-    template_folder = os.path.join(application_path, 'templates')
-    static_folder = os.path.join(application_path, 'static')
-    app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
+    # Si es un ejecutable (PyInstaller), los recursos están en _MEIPASS
+    base_path = sys._MEIPASS
+else:
+    # Si es un script normal, los recursos están en el directorio actual
+    base_path = os.path.abspath(".")
 
+template_dir = os.path.join(base_path, 'templates')
+static_dir = os.path.join(base_path, 'static')
+
+app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
 app.secret_key = os.getenv('SECRET_KEY', 'default-secret-key-123')
 
 app.secret_key = os.getenv('SECRET_KEY', 'default-secret-key-123')
@@ -43,8 +48,12 @@ AVAILABLE_COMPUTERS = {
     "torreon_1": {"name": "Torreón 1", "url": "https://torreon1.maxtres.org", "id": "torreon_1"},
     "torreon_2": {"name": "Torreón 2", "url": "https://torreon2.maxtres.org", "id": "torreon_2"},
     "tijuana_1": {"name": "Tijuana 1", "url": "https://tijuana1.maxtres.org", "id": "tijuana_1"},
+    "tijuana_1": {"name": "Tijuana 1", "url": "https://tijuana1.maxtres.org", "id": "tijuana_1"},
     "guada": {"name": "Guada", "url": "https://guada.maxtres.org", "id": "guada"}
 }
+
+# Identidad de esta instancia (se carga del .env)
+MY_ID = os.getenv('MY_COMPUTER_ID', 'guada')
 
 @app.route('/')
 def index():
@@ -62,7 +71,7 @@ def local_groups():
 @app.route('/api/groups')
 def get_groups():
     """Ruta UI: Pide los grupos redirigiendo a la PC seleccionada mediante Cloudflare"""
-    selected_id = session.get('selected_computer', 'guada')
+    selected_id = session.get('selected_computer', MY_ID)
     
     target_pc = AVAILABLE_COMPUTERS.get(selected_id)
     if not target_pc:
@@ -85,9 +94,11 @@ def get_groups():
 
 @app.route('/api/computers')
 def get_computers():
+    filtered_computers = {k: v for k, v in AVAILABLE_COMPUTERS.items() if k != 'guada'}
     return jsonify({
-        "available": AVAILABLE_COMPUTERS,
-        "selected": session.get('selected_computer', 'guada')
+        "available": filtered_computers,
+        "selected": session.get('selected_computer', MY_ID),
+        "this_machine": MY_ID
     })
 
 @app.route('/api/set_computer', methods=['POST'])
@@ -134,7 +145,7 @@ def local_start_campaign():
 def start_campaign():
     """Ruta UI: Envía el inicio de campaña entero a la computadora objetivo a través de Cloudflare"""
     data = request.json
-    selected_id = session.get('selected_computer', 'guada')
+    selected_id = session.get('selected_computer', MY_ID)
     
     target_pc = AVAILABLE_COMPUTERS.get(selected_id)
     
