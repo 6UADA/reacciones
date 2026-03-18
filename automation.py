@@ -268,32 +268,58 @@ def watch_live_video(driver_path, debugger_address, url, duration_seconds=60):
     
     # Función de ayuda para clickar el botón de play
     def try_click_play(ctx):
+        # 1. Intentar Play vía JavaScript directo en todos los videos (Lo más efectivo)
+        try:
+            videos = ctx.find_elements(By.TAG_NAME, "video")
+            for v in videos:
+                if v.is_displayed():
+                    driver.execute_script("arguments[0].play();", v)
+                    log_to_web("⚡ Intento de play vía JS en elemento <video>", "info")
+        except: pass
+
+        # 2. Selectores específicos de Play (Ordenados por prioridad)
         selectors = [
+            "//button[contains(@aria-label, 'Reproducir')]", # Español
+            "//button[contains(@aria-label, 'Play')]",      # Inglés
+            "//div[contains(@aria-label, 'Reproducir')]", 
+            "//div[contains(@aria-label, 'Play')]",
+            "//*[contains(@class, 'play') and not(contains(@class, 'player'))]", # Evitar la clase del contenedor
             "//div[contains(text(), 'permitir')]",
-            "//div[contains(text(), 'Haga clic')]",
-            "//*[contains(@class, 'play')]",
-            "//button[contains(@aria-label, 'Play')]",
-            "//div[@role='button']",
-            "//video"
+            "//div[contains(text(), 'Haga clic')]"
         ]
+        
         for s in selectors:
             try:
-                # Buscamos elementos visibles
                 elements = ctx.find_elements(By.XPATH, s)
                 for el in elements:
                     if el.is_displayed():
-                        # Intentamos click normal
+                        # Evitar clics en botones de "Menú" o "Más opciones" si se colaron
+                        label = el.get_attribute("aria-label") or el.text or ""
+                        if any(x in label.lower() for x in ["menú", "opciones", "settings", "configuración"]):
+                            continue
+                            
                         try:
                             actions = ActionChains(driver)
                             actions.move_to_element(el).click().perform()
-                            log_to_web(f"🎯 Click (Action) en {s[:20]}...", "success")
+                            log_to_web(f"🎯 Click (Action) en selector específico: {s[:20]}", "success")
                             return True
-                        except: pass
-                        # Fallback JS
-                        driver.execute_script("arguments[0].click();", el)
-                        log_to_web(f"🎯 Click (JS) en {s[:20]}...", "success")
-                        return True
+                        except:
+                            driver.execute_script("arguments[0].click();", el)
+                            log_to_web(f"🎯 Click (JS) en selector específico: {s[:20]}", "success")
+                            return True
             except: continue
+        
+        # 3. Si hay video pero no botón, click en el centro del video
+        try:
+            videos = ctx.find_elements(By.TAG_NAME, "video")
+            for v in videos:
+                if v.is_displayed():
+                    actions = ActionChains(driver)
+                    actions.move_to_element(v).click().perform()
+                    log_to_web("🎯 Click en el centro del elemento <video>", "success")
+                    return True
+        except: pass
+
         return False
 
     # Primero buscamos en el documento principal
