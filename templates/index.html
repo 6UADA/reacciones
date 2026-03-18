@@ -326,88 +326,8 @@
                         </div>
                     </div>
 
-                    <!-- Mode Selector v24 (Hidden per user request) -->
-                    <div class="hidden flex p-1 bg-surface-input rounded-xl border border-edge mb-6 max-w-sm mx-auto">
-                        <button id="modeReactions" onclick="setCampaignMode('reactions')"
-                            class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all bg-brand text-white shadow-glow">
-                            Reacciones
-                        </button>
-                        <button id="modeViews" onclick="setCampaignMode('views')"
-                            class="flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all text-txt-secondary hover:text-txt-primary">
-                            Visualizaciones
-                        </button>
-                    </div>
-
-                    <!-- Grid de Reacciones (Hidden per user request) -->
-                    <div id="reactionsGrid" class="hidden grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                        <!-- Like -->
-                        <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
-                            data-reaction="like">
-                            <div class="text-3xl" role="img" aria-label="Me gusta">&#128077;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Me gusta</span>
-                            <input type="number" min="0" value="0"
-                                class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
-                        </div>
-                        <!-- Love -->
-                        <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
-                            data-reaction="love">
-                            <div class="text-3xl" role="img" aria-label="Me encanta">&#10084;&#65039;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Me encanta</span>
-                            <input type="number" min="0" value="0"
-                                class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
-                        </div>
-                        <!-- Care -->
-                        <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
-                            data-reaction="care">
-                            <div class="text-3xl" role="img" aria-label="Me importa">&#129303;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Me importa</span>
-                            <input type="number" min="0" value="0"
-                                class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
-                        </div>
-                        <!-- Haha -->
-                        <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
-                            data-reaction="haha">
-                            <div class="text-3xl" role="img" aria-label="Me divierte">&#128518;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Me divierte</span>
-                            <input type="number" min="0" value="0"
-                                class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
-                        </div>
-                        <!-- Wow -->
-                        <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
-                            data-reaction="wow">
-                            <div class="text-3xl" role="img" aria-label="Me asombra">&#128562;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Me asombra</span>
-                            <input type="number" min="0" value="0"
-                                class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
-                        </div>
-                        <!-- Sad -->
-                        <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
-                            data-reaction="sad">
-                            <div class="text-3xl" role="img" aria-label="Me entristece">&#128546;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Me entristece</span>
-                            <input type="number" min="0" value="0"
-                                class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
-                        </div>
-                        <!-- Angry -->
-                        <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
-                            data-reaction="angry">
-                            <div class="text-3xl" role="img" aria-label="Me enoja">&#128545;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Me enoja</span>
-                            <input type="number" min="0" value="0"
-                                class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
-                        </div>
-                    </div>
-
                     <!-- Grid de Visualizaciones -->
                     <div id="viewsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto">
-                        <!-- Views -->
-                        <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
-                            data-reaction="views">
-                            <div class="text-3xl" role="img" aria-label="Solo Views">&#128064;</div>
-                            <span class="text-xs font-medium text-txt-secondary">Solo Visualizaciones</span>
-                            <input type="number" min="0" value="0"
-                                class="reaction-input w-full px-3 py-2 rounded-lg bg-surface-input border border-edge text-center text-sm text-txt-primary font-medium focus:outline-none focus:ring-2 focus:ring-brand/50 focus:border-brand transition-all" />
-                        </div>
                         <!-- Timer -->
                         <div class="reaction-card bg-surface rounded-xl border border-edge p-4 flex flex-col items-center gap-3"
                             data-reaction="timer">
@@ -456,6 +376,25 @@
                         class="bg-surface rounded-xl border border-edge p-4 max-h-48 overflow-y-auto font-mono text-xs text-txt-secondary flex flex-col gap-1">
                     </div>
                 </section>
+
+                <!-- Debug Console -->
+                <section class="bg-surface-card rounded-2xl border border-edge p-6 shadow-card animate-fade-in-delay-3">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center text-brand-light">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <polyline points="4 17 10 11 4 5"></polyline>
+                                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                                </svg>
+                            </div>
+                            <h2 class="text-base font-semibold text-txt-primary">Consola del Servidor (Debug)</h2>
+                        </div>
+                        <button onclick="clearDebug()" class="text-[10px] text-txt-muted hover:text-txt-primary transition-colors uppercase font-bold tracking-widest">Limpiar</button>
+                    </div>
+                    <div id="debugConsole" class="bg-surface-input border border-edge rounded-xl p-4 font-mono text-[11px] h-64 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar">
+                        <div class="text-txt-muted italic">Esperando logs del servidor...</div>
+                    </div>
+                </section>
             </div>
         </main>
 
@@ -466,21 +405,8 @@
     </div>
 
     <script>
-        // Mapping for backend reaction names
-        const REACTION_MAP = {
-            'like': 'Me gusta',
-            'love': 'Me encanta',
-            'care': 'Me importa',
-            'haha': 'Me divierte',
-            'wow': 'Me asombra',
-            'sad': 'Me entristece',
-            'angry': 'Me enoja',
-            'views': 'Solo Views'
-        };
-
         // Global group storage for filtering
         let allGroupsData = [];
-        let campaignMode = 'views'; // v24: Default mode (Hiding reactions for now)
 
         // Load computers and groups on start
         document.addEventListener('DOMContentLoaded', () => {
@@ -535,12 +461,18 @@
             fetch('/api/groups')
                 .then(r => r.json())
                 .then(groups => {
+                    if (groups.error) {
+                        addLog(`Error cargando grupos: ${groups.error}`, 'error');
+                        document.getElementById('fromGroup').innerHTML = `<option value="">Error: ${groups.error}</option>`;
+                        return;
+                    }
                     allGroupsData = groups;
                     renderGroups('');
                 })
                 .catch(err => {
                     console.error('Error fetching groups:', err);
-                    document.getElementById('fromGroup').innerHTML = '<option value="">Error cargando grupos</option>';
+                    addLog('Error de red al cargar grupos', 'error');
+                    document.getElementById('fromGroup').innerHTML = '<option value="">Error de conexión</option>';
                 });
         }
 
@@ -577,74 +509,7 @@
             });
         }
 
-        function updateTotal() {
-            const inputs = document.querySelectorAll('.reaction-input');
-            let total = 0;
-            inputs.forEach(function (input) {
-                // Solo sumamos si el contenedor no está oculto
-                if (!input.closest('.hidden')) {
-                    total += parseInt(input.value) || 0;
-                }
-            });
-            document.getElementById('totalCount').textContent = total;
-            checkCapacity(total);
-        }
 
-        // v25: Verificación de capacidad (Sugerido por el usuario)
-        function checkCapacity(needed) {
-            const alertEl = document.getElementById('capacityAlert');
-            if (needed <= 0) {
-                alertEl.classList.add('hidden');
-                return;
-            }
-
-            // Suponemos un promedio de 10 cuentas por grupo
-            const groupsNeeded = Math.ceil(needed / 10);
-
-            if (groupsNeeded > 1) {
-                alertEl.textContent = `Necesitas ${groupsNeeded} grupos para las ${needed} reacciones`;
-                alertEl.classList.remove('hidden');
-            } else {
-                alertEl.classList.add('hidden');
-            }
-        }
-
-        function setCampaignMode(mode) {
-            campaignMode = mode;
-            const rGrid = document.getElementById('reactionsGrid');
-            const vGrid = document.getElementById('viewsGrid');
-            const btnR = document.getElementById('modeReactions');
-            const btnV = document.getElementById('modeViews');
-            const desc = document.getElementById('configDesc');
-
-            if (mode === 'reactions') {
-                rGrid.classList.remove('hidden');
-                vGrid.classList.add('hidden');
-                btnR.className = "flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all bg-brand text-white shadow-glow";
-                btnV.className = "flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all text-txt-secondary hover:text-txt-primary";
-                desc.textContent = "Define la cantidad de cada tipo de reaccion";
-                vGrid.querySelector('input').value = 0;
-            } else {
-                vGrid.classList.remove('hidden');
-                rGrid.classList.add('hidden');
-                btnV.className = "flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all bg-brand text-white shadow-glow";
-                btnR.className = "flex-1 py-2 px-4 rounded-lg text-sm font-semibold transition-all text-txt-secondary hover:text-txt-primary";
-                desc.textContent = "Configura el tiempo de visualizacion";
-                rGrid.querySelectorAll('input').forEach(i => i.value = 0);
-            }
-            updateTotal();
-        }
-
-        // Attach event listeners
-        document.querySelectorAll('.reaction-input').forEach(function (input) {
-            input.addEventListener('input', updateTotal);
-            input.addEventListener('change', function () {
-                if (this.value === '' || parseInt(this.value) < 0) {
-                    this.value = 0;
-                }
-                updateTotal();
-            });
-        });
 
         // Start campaign
         function startCampaign() {
@@ -679,17 +544,6 @@
             // Gather data
             var toGroup = document.getElementById('toGroup').value;
             var minutes = document.getElementById('minutesInput').value;
-            var counts = {};
-            document.querySelectorAll('.reaction-card[data-reaction]').forEach(function (card) {
-                var type = card.getAttribute('data-reaction');
-                if (type !== 'timer') {
-                    var input = card.querySelector('input');
-                    var backendName = REACTION_MAP[type];
-                    if (backendName) {
-                        counts[backendName] = parseInt(input.value) || 0;
-                    }
-                }
-            });
 
             addLog('Iniciando campaña...', 'info');
 
@@ -698,7 +552,6 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     url: url,
-                    counts: counts,
                     duration_mins: minutes,
                     group_id: fromGroup,
                     end_group_id: toGroup
@@ -706,11 +559,12 @@
             })
                 .then(r => r.json())
                 .then(data => {
+                    const compName = document.getElementById('computerSelect').options[document.getElementById('computerSelect').selectedIndex].text;
                     if (data.status === 'started') {
-                        addLog(data.message, 'success');
-                        addLog('Los perfiles se están cargando en segundo plano.', 'info');
+                        addLog(`¡Éxito! Orden enviada a: <b>${compName}</b>`, 'success');
+                        addLog(data.message, 'info');
                     } else {
-                        addLog('Error: ' + data.message, 'error');
+                        addLog('Error en ' + compName + ': ' + (data.message || 'Error desconocido'), 'error');
                     }
 
                     // Restore button
@@ -766,6 +620,46 @@
         var style = document.createElement('style');
         style.textContent = '@keyframes shake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }';
         document.head.appendChild(style);
+        // Debug Console Poller
+        function pollDebugLogs() {
+            fetch('/api/debug_logs')
+                .then(r => r.json())
+                .then(logs => {
+                    const consoleEl = document.getElementById('debugConsole');
+                    if (logs.length === 0) return;
+                    
+                    const lastLogId = consoleEl.dataset.lastLog;
+                    const lastLog = logs[logs.length - 1];
+                    const currentLogId = `${lastLog.time}-${lastLog.msg.substring(0,20)}`;
+                    
+                    if (lastLogId === currentLogId) return;
+
+                    consoleEl.innerHTML = '';
+                    logs.forEach(log => {
+                        const div = document.createElement('div');
+                        const colors = {
+                            'info': 'text-txt-secondary',
+                            'success': 'text-emerald-400',
+                            'error': 'text-rose-400 font-bold',
+                            'warning': 'text-amber-400'
+                        };
+                        div.className = colors[log.type] || 'text-txt-muted';
+                        div.innerHTML = `<span class="text-[10px] opacity-40 mr-2">${log.time}</span> ${log.msg}`;
+                        consoleEl.appendChild(div);
+                    });
+                    
+                    consoleEl.dataset.lastLog = currentLogId;
+                    consoleEl.scrollTop = consoleEl.scrollHeight;
+                })
+                .catch(() => {});
+        }
+
+        function clearDebug() {
+            document.getElementById('debugConsole').innerHTML = '<div class="text-txt-muted italic">Consola limpia. Esperando...</div>';
+        }
+
+        setInterval(pollDebugLogs, 2000);
+        pollDebugLogs();
     </script>
 </body>
 
