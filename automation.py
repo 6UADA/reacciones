@@ -2,6 +2,7 @@ import requests
 import random
 import time
 import traceback
+import json
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -53,13 +54,38 @@ def random_scroll(driver):
 
 # ---------- ADSPOWER ----------
 def start_browser(user_id):
-    url = f"{ADSPOWER_API_URL}/api/v1/browser/start?user_id={user_id}"
+    # Flags de optimización para ChromeDriver dentro de AdsPower
+    launch_args = [
+        "--disable-gpu",
+        "--disable-background-networking",
+        "--disable-background-timer-throttling",
+        "--disable-breakpad",
+        "--disable-client-side-phishing-detection",
+        "--disable-component-update",
+        "--disable-default-apps",
+        "--disable-dev-shm-usage",
+        "--disable-domain-reliability",
+        "--disable-extensions",
+        "--disable-features=InterestFeedContentSuggestions",
+        "--mute-audio" # Mute a nivel browser por defecto
+    ]
+
+    url = f"{ADSPOWER_API_URL}/api/v1/browser/start"
+    params = {
+        "user_id": user_id,
+        "launch_args": json.dumps(launch_args)
+    }
+    
     headers = {
         "Authorization": f"Bearer {API_KEY}",
-        "api-key": API_KEY  # Soporte doble para asegurar compatibilidad
+        "api-key": API_KEY
     }
 
-    resp = requests.get(url, headers=headers)
+    try:
+        resp = requests.get(url, params=params, headers=headers)
+    except Exception as e:
+        log_to_web(f"❌ Error de conexión al iniciar browser: {e}", "error")
+        return None
 
     if resp.status_code != 200:
         log_to_web(f"❌ AdsPower no respondió (HTTP {resp.status_code})", "error")
