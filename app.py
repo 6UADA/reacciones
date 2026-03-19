@@ -1,9 +1,11 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 import os
 import sys
 import json
 import threading
 import time
+import re
+from functools import wraps
 from dotenv import load_dotenv
 
 # --- CARGA DE CONFIGURACIÓN INICIAL (DEBE SER ANTES DE OTROS IMPORTS) ---
@@ -25,19 +27,81 @@ if getattr(sys, 'frozen', False):
 
 app.secret_key = os.getenv('SECRET_KEY', 'default-secret-key-123')
 
-app.secret_key = os.getenv('SECRET_KEY', 'default-secret-key-123')
+AUTH_USERNAME = os.getenv('APP_USERNAME') or os.getenv('LOGIN_USER') or 'Maxtres'
+AUTH_PASSWORD = os.getenv('APP_PASSWORD') or os.getenv('LOGIN_PASSWORD') or 'M4xTr3s2025'
+
+
+def normalize_computer_id(value):
+    if not value:
+        return ''
+    return re.sub(r'[^a-z0-9_]', '', value.strip().lower().replace('-', '_').replace(' ', '_'))
+
+
+def detect_computer_id():
+    explicit = (
+        os.getenv('CURRENT_COMPUTER')
+        or os.getenv('CURRENT_COMPUTER_ID')
+        or os.getenv('MY_COMPUTER_ID')
+    )
+    if explicit:
+        return normalize_computer_id(explicit)
+
+    host = os.getenv('COMPUTERNAME') or os.getenv('HOSTNAME') or 'local'
+    return normalize_computer_id(host)
+
+
+def login_required(view_func):
+    @wraps(view_func)
+    def wrapped_view(*args, **kwargs):
+        if session.get('logged_in'):
+            return view_func(*args, **kwargs)
+
+        if request.path.startswith('/api/') or request.path == '/start_campaign':
+            return jsonify({"status": "error", "message": "No autorizado. Inicia sesión."}), 401
+
+        return redirect(url_for('login'))
+
+    return wrapped_view
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = (request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+
+        if username == AUTH_USERNAME and password == AUTH_PASSWORD:
+            session['logged_in'] = True
+            session['username'] = username
+            return redirect(url_for('index'))
+
+        return render_template('login.html', error='Usuario o contraseña incorrectos.')
+
+    if session.get('logged_in'):
+        return redirect(url_for('index'))
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
 @app.route('/api/debug_logs')
+@login_required
 def get_debug_logs():
     return jsonify(get_logs())
 
-COMPUTER_NAME = os.getenv('CURRENT_COMPUTER', 'local')
+COMPUTER_NAME = detect_computer_id() or 'local'
 
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html', computer_name=COMPUTER_NAME)
 
 @app.route('/api/groups')
+@login_required
 def get_groups():
     """Lee los grupos directamente de AdsPower local"""
     try:
@@ -50,6 +114,7 @@ def get_groups():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/start_campaign', methods=['POST'])
+@login_required
 def start_campaign():
     """Inicia la campaña localmente en esta máquina"""
     data = request.json

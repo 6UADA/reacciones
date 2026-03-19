@@ -3,6 +3,7 @@ import random
 import time
 import traceback
 import json
+import re
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
@@ -20,13 +21,59 @@ load_dotenv()
 
 
 # ================= CONFIG =================
-# NOTA: La API Key se carga desde el archivo .env
-ADSPOWER_API_URL = os.getenv("ADSPOWER_API_URL", "http://local.adspower.com:50325")
-API_KEY = os.getenv("API_KEY", "")
+def normalize_computer_id(value):
+    if not value:
+        return ''
+    return re.sub(r'[^a-z0-9_]', '', value.strip().lower().replace('-', '_').replace(' ', '_'))
+
+
+def detect_computer_id():
+    explicit = (
+        os.getenv('CURRENT_COMPUTER')
+        or os.getenv('CURRENT_COMPUTER_ID')
+        or os.getenv('MY_COMPUTER_ID')
+    )
+    if explicit:
+        return normalize_computer_id(explicit)
+
+    host = os.getenv('COMPUTERNAME') or os.getenv('HOSTNAME')
+    return normalize_computer_id(host or '')
+
+
+def resolve_ads_config():
+    computer_id = detect_computer_id()
+    prefixes = []
+
+    if computer_id:
+        prefixes.append(computer_id.upper())
+        # Permite mapear torreon_1/torreon_2 -> TORREON_* del .env
+        region_prefix = re.sub(r'_\d+$', '', computer_id.upper())
+        if region_prefix and region_prefix not in prefixes:
+            prefixes.append(region_prefix)
+
+    api_url = ''
+    api_key = ''
+
+    for prefix in prefixes:
+        api_url = api_url or os.getenv(f"{prefix}_ADSPOWER_API_URL", "")
+        api_key = api_key or os.getenv(f"{prefix}_API_KEY", "")
+
+    api_url = api_url or os.getenv("ADSPOWER_API_URL", "http://local.adspower.com:50325")
+    api_key = api_key or os.getenv("API_KEY", "")
+
+    return computer_id or 'local', api_url, api_key
+
+
+ACTIVE_COMPUTER_ID, ADSPOWER_API_URL, API_KEY = resolve_ads_config()
 
 if not API_KEY:
-    print(f"ERROR CRITICO: No se encuentra API_KEY. Directorio actual: {os.getcwd()}")
+    print(
+        f"ERROR CRITICO: No se encuentra API_KEY para '{ACTIVE_COMPUTER_ID}'. "
+        f"Directorio actual: {os.getcwd()}"
+    )
 else:
+    print(f"Configuracion activa: {ACTIVE_COMPUTER_ID}")
+    print(f"API URL: {ADSPOWER_API_URL}")
     print(f"API Key cargada: {API_KEY[:5]}...")
 
 # =========================================
@@ -56,6 +103,7 @@ def random_scroll(driver):
 def start_browser(user_id):
     # Flags de optimización para ChromeDriver dentro de AdsPower
     launch_args = [
+        "--headless=new",  # Modo headless (sin ventana visible)
         "--disable-gpu",
         "--disable-background-networking",
         "--disable-background-timer-throttling",

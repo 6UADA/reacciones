@@ -48,15 +48,21 @@ def main():
                 lines = f.readlines()
             
             with open(env_path, 'w', encoding='utf-8') as f:
-                found = False
+                found_my = False
+                found_current = False
                 for line in lines:
                     if line.startswith("MY_COMPUTER_ID="):
                         f.write(f"MY_COMPUTER_ID={comp['id']}\n")
-                        found = True
+                        found_my = True
+                    elif line.startswith("CURRENT_COMPUTER_ID="):
+                        f.write(f"CURRENT_COMPUTER_ID={comp['id']}\n")
+                        found_current = True
                     else:
                         f.write(line)
-                if not found:
+                if not found_my:
                     f.write(f"\nMY_COMPUTER_ID={comp['id']}\n")
+                if not found_current:
+                    f.write(f"CURRENT_COMPUTER_ID={comp['id']}\n")
         
         print(f"✅ {comp['name']} completado.")
 
