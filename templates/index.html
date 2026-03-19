@@ -214,7 +214,8 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-3">
-                    <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-brand/10 text-brand-light border border-brand/20">
+                    <span
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-brand/10 text-brand-light border border-brand/20">
                         📍 {{ computer_name }}
                     </span>
                     <span id="connectionStatus"
@@ -374,17 +375,21 @@
                 <section class="bg-surface-card rounded-2xl border border-edge p-6 shadow-card animate-fade-in-delay-3">
                     <div class="flex items-center justify-between mb-4">
                         <div class="flex items-center gap-2">
-                            <div class="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center text-brand-light">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <div
+                                class="w-8 h-8 rounded-lg bg-brand/10 flex items-center justify-center text-brand-light">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
                                     <polyline points="4 17 10 11 4 5"></polyline>
                                     <line x1="12" y1="19" x2="20" y2="19"></line>
                                 </svg>
                             </div>
                             <h2 class="text-base font-semibold text-txt-primary">Consola del Servidor (Debug)</h2>
                         </div>
-                        <button onclick="clearDebug()" class="text-[10px] text-txt-muted hover:text-txt-primary transition-colors uppercase font-bold tracking-widest">Limpiar</button>
+                        <button onclick="clearDebug()"
+                            class="text-[10px] text-txt-muted hover:text-txt-primary transition-colors uppercase font-bold tracking-widest">Limpiar</button>
                     </div>
-                    <div id="debugConsole" class="bg-surface-input border border-edge rounded-xl p-4 font-mono text-[11px] h-64 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar">
+                    <div id="debugConsole"
+                        class="bg-surface-input border border-edge rounded-xl p-4 font-mono text-[11px] h-64 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar">
                         <div class="text-txt-muted italic">Esperando logs del servidor...</div>
                     </div>
                 </section>
@@ -578,11 +583,11 @@
                 .then(logs => {
                     const consoleEl = document.getElementById('debugConsole');
                     if (logs.length === 0) return;
-                    
+
                     const lastLogId = consoleEl.dataset.lastLog;
                     const lastLog = logs[logs.length - 1];
-                    const currentLogId = `${lastLog.time}-${lastLog.msg.substring(0,20)}`;
-                    
+                    const currentLogId = `${lastLog.time}-${lastLog.msg.substring(0, 20)}`;
+
                     if (lastLogId === currentLogId) return;
 
                     consoleEl.innerHTML = '';
@@ -598,11 +603,11 @@
                         div.innerHTML = `<span class="text-[10px] opacity-40 mr-2">${log.time}</span> ${log.msg}`;
                         consoleEl.appendChild(div);
                     });
-                    
+
                     consoleEl.dataset.lastLog = currentLogId;
                     consoleEl.scrollTop = consoleEl.scrollHeight;
                 })
-                .catch(() => {});
+                .catch(() => { });
         }
 
         function clearDebug() {
